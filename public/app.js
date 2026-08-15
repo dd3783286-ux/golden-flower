@@ -11,6 +11,8 @@ let lastTurnKey = '';
 let dismissedRevealId = null;
 let lastSeenRound = 0;
 let lastSeenState = false;
+let visualStateRound = 0;
+let previousPlayerVisualStates = new Map();
 
 const $ = (selector) => document.querySelector(selector);
 const BET_LEVELS = [1, 2, 5, 10, 20, 50, 100, 200, 500];
@@ -164,6 +166,11 @@ function render() {
 function renderPlayers() {
   const playerCount = room.players.length;
   const newDeal = room.status === 'playing' && room.round > lastAnimatedRound;
+  if (room.round !== visualStateRound) {
+    visualStateRound = room.round;
+    previousPlayerVisualStates = new Map();
+  }
+  const stateEffects = [];
   const myIndex = room.players.findIndex((player) => player.id === viewerId());
   const layout = seatLayouts[playerCount] || seatLayouts[10];
   $('#players').innerHTML = room.players.map((player, index) => {
@@ -172,16 +179,38 @@ function renderPlayers() {
     const [x, y] = seatPositions[seatIndex];
     const isTurn = room.turn === index && room.status === 'playing';
     const state = player.connected === false ? (player.autoPlay ? '离线 · 托管' : '离线') : room.status === 'playing' && player.autoPlay ? (player.folded ? '托管 · 已弃牌' : '托管中') : room.status === 'playing' && player.folded ? (player.eliminatedByCompare ? '比牌淘汰' : '已弃牌') : room.status === 'waiting' ? (player.ready ? '已准备' : player.chips < room.baseBet ? '需筹码' : '未准备') : player.seen ? '已看牌' : '';
+    const visualState = room.status === 'playing' && player.folded ? 'folded' : room.status === 'playing' && player.seen ? 'seen' : '';
+    const previousVisualState = previousPlayerVisualStates.get(player.id);
+    if (previousVisualState !== undefined && previousVisualState !== visualState && (visualState === 'seen' || visualState === 'folded')) stateEffects.push({ id: player.id, type: visualState });
+    previousPlayerVisualStates.set(player.id, visualState);
+    const stateClass = state.includes('看牌') ? 'state-seen' : state.includes('弃牌') || state.includes('淘汰') ? 'state-folded' : '';
     const isMe = player.id === viewerId();
     const showOpponentCards = room.status === 'playing' && !isMe && !player.folded;
     const classes = [isTurn ? 'turn' : '', player.connected === false ? 'offline' : '', player.folded && room.status === 'playing' ? 'folded' : '', player.autoPlay ? 'trustee' : '', seatIndex === 0 ? 'top-seat' : '', `seat-${seatIndex}`, isMe ? 'me' : ''].join(' ');
     return `<div class="player-seat ${classes}" style="--x:${x};--y:${y}" data-player-id="${esc(player.id)}">
-      ${state ? `<span class="seat-state">${state}</span>` : ''}
+      ${state ? `<span class="seat-state ${stateClass}" aria-live="polite">${state}</span>` : ''}
       <div class="avatar">${isTurn ? '<span class="turn-time" id="turnCountdown"></span><b class="turn-seconds" id="turnSeconds">30</b>' : esc(player.name.slice(0, 1))}${index === room.dealer ? '<span class="seat-badge">庄</span>' : ''}</div>
       <div class="seat-name">${esc(player.name)}</div><b class="seat-chips">${player.chips}</b>
       ${showOpponentCards ? `<div class="opponent-cards ${newDeal ? 'deal' : ''}" aria-label="三张未公开的牌"><i></i><i></i><i></i></div>` : ''}
     </div>`;
   }).join('');
+  stateEffects.forEach(({ id, type }) => {
+    const seat = [...document.querySelectorAll('#players [data-player-id]')].find((element) => element.dataset.playerId === id);
+    const label = seat?.querySelector('.seat-state');
+    if (!label) return;
+    const keyframes = type === 'seen'
+      ? [
+          { opacity: 0, transform: 'translateX(-50%) translateY(8px) scale(.45)', filter: 'brightness(2.8)' },
+          { opacity: 1, transform: 'translateX(-50%) translateY(-5px) scale(1.32)', filter: 'brightness(1.45)', offset: .48 },
+          { opacity: 1, transform: 'translateX(-50%) translateY(0) scale(1)', filter: 'brightness(1)' }
+        ]
+      : [
+          { opacity: 0, transform: 'translateX(-50%) translateY(-12px) scale(2) rotate(-9deg)' },
+          { opacity: 1, transform: 'translateX(-50%) translateY(2px) scale(.9) rotate(2deg)', offset: .58 },
+          { opacity: 1, transform: 'translateX(-50%) translateY(0) scale(1) rotate(0)' }
+        ];
+    label.animate(keyframes, { duration: type === 'seen' ? 760 : 620, easing: 'cubic-bezier(.2,.85,.2,1)' });
+  });
   updateCountdown();
 }
 
