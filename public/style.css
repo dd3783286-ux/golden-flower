@@ -178,6 +178,7 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 
 /* Clear, one-shot player state feedback. The motion itself is triggered in app.js only when state changes. */
 .seat-state{z-index:6;top:-22px;padding:2px 7px;border:1px solid #ffffff24;border-radius:9px;font-weight:800;line-height:16px;box-shadow:0 3px 10px #0009}
+.player-seat.top-seat{transform:translate(-50%,calc(-50% + 12px))}
 .seat-state.state-seen{color:#312000;background:linear-gradient(180deg,#fff2a0,#eeb735);border-color:#fff8c8;font-size:12px;font-weight:950;letter-spacing:1px;text-shadow:0 1px #fff7b8;box-shadow:0 0 0 2px #f6c94b40,0 0 17px #ffd95baa,0 4px 10px #0009}
 .seat-state.state-folded{color:#fff7f7;background:linear-gradient(180deg,#df4b57,#8f1725);border-color:#ffadb5;font-size:12px;font-weight:950;letter-spacing:1px;text-shadow:0 1px 2px #53000b;box-shadow:0 0 0 2px #e94a5940,0 0 15px #e73847aa,0 4px 10px #0009}
 .player-seat.folded .avatar{filter:grayscale(.75);border-color:#a74750}
