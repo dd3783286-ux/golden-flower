@@ -19,6 +19,7 @@ let compareRevealTimer = null;
 let winnerRevealTimer = null;
 let recordCache = null;
 let deckWarmingStarted = false;
+let chipFlightTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 const BET_LEVELS = [1, 2, 5, 10, 20, 50, 100, 200, 500];
@@ -69,6 +70,8 @@ function resetRoomVisualState() {
   clearTimeout(tableActionTimer);
   clearTimeout(compareRevealTimer);
   clearTimeout(winnerRevealTimer);
+  clearTimeout(chipFlightTimer);
+  $('#chipFlight')?.classList.add('hidden');
 }
 
 async function init() {
@@ -108,15 +111,18 @@ function connect() {
   socket.on('disconnect', () => setNetwork(false));
   socket.on('connect_error', () => setNetwork(false));
   socket.on('room', (state) => {
+    const sameRoom = room?.code === state.code;
+    const potDelta = sameRoom ? Math.max(0, state.pot - previousPot) : 0;
+    const newAction = sameRoom && state.lastAction?.id && state.lastAction.id !== room?.lastAction?.id;
+    const animationAmount = newAction && Number(state.lastAction.amount) > 0 ? Number(state.lastAction.amount) : potDelta;
     if (room?.code && room.code !== state.code) resetRoomVisualState();
-    const potIncreased = room && state.pot > previousPot;
     const nextTurnKey = `${state.round}:${state.turn}`;
     if (nextTurnKey !== lastTurnKey) raiseOpen = false;
     lastTurnKey = nextTurnKey;
     room = state;
     previousPot = state.pot;
     render();
-    if (potIncreased) animateChip();
+    if (animationAmount > 0) animateChip(animationAmount);
   });
 }
 
@@ -636,11 +642,12 @@ document.addEventListener('keydown', (event) => {
   else if (!$('#resultOverlay').classList.contains('hidden')) $('#resultOverlay').classList.add('hidden');
 });
 
-function animateChip() {
+function animateChip(amount) {
   const chip = $('#chipFlight');
+  clearTimeout(chipFlightTimer);
   chip.classList.remove('hidden');
-  chip.textContent = room.currentBet;
-  setTimeout(() => chip.classList.add('hidden'), 600);
+  chip.textContent = `+${amount}`;
+  chipFlightTimer = setTimeout(() => chip.classList.add('hidden'), 600);
 }
 
 function updateCountdown() {
