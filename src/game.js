@@ -332,7 +332,8 @@ export function showdown(room, playerId, targetId) {
     const alive = room.players.filter((candidate) => !candidate.folded);
     if (alive.length !== 2) throw new Error('闷牌仅在牌局剩余两名玩家时可以比牌');
   }
-  const cost = room.currentBet * (player.seen ? 2 : 1);
+  // 明牌仅在主动比闷牌时支付双倍；明牌对明牌、闷牌对闷牌均按当前档位支付。
+  const cost = room.currentBet * (player.seen && !target.seen ? 2 : 1);
   payExact(player, cost);
   recordLedger(room, player, '比牌费用', -cost, `与 ${target.name} 比牌`);
   player.bet += cost;
@@ -373,12 +374,13 @@ export function canCompare(room) {
 
 function comparisonAvailability(room, playerId) {
   const player = room.players.find((candidate) => candidate.id === playerId);
-  if (room.status !== 'playing' || !player || player.folded) return { canCompare: false, compareTargetIds: [], compareHint: '不可比' };
-  if (!canCompare(room)) return { canCompare: false, compareTargetIds: [], compareHint: '首轮后' };
+  if (room.status !== 'playing' || !player || player.folded) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '不可比' };
+  if (!canCompare(room)) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '首轮后' };
   const opponents = room.players.filter((candidate) => !candidate.folded && candidate.id !== playerId);
-  if (player.seen) return { canCompare: opponents.length > 0, compareTargetIds: opponents.map((candidate) => candidate.id), compareHint: '' };
-  if (opponents.length !== 1) return { canCompare: false, compareTargetIds: [], compareHint: '剩两人' };
-  return { canCompare: true, compareTargetIds: [opponents[0].id], compareHint: '' };
+  const compareCosts = Object.fromEntries(opponents.map((candidate) => [candidate.id, room.currentBet * (player.seen && !candidate.seen ? 2 : 1)]));
+  if (player.seen) return { canCompare: opponents.length > 0, compareTargetIds: opponents.map((candidate) => candidate.id), compareCosts, compareHint: '' };
+  if (opponents.length !== 1) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '剩两人' };
+  return { canCompare: true, compareTargetIds: [opponents[0].id], compareCosts, compareHint: '' };
 }
 
 export function expireTurn(room, currentTime = now()) {

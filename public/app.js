@@ -245,6 +245,10 @@ function renderActions(mine, turnPlayer) {
   const callCost = room.currentBet * factor;
   const activePlayers = room.players.filter((player) => !player.folded);
   const compareReady = Boolean(room.canCompare) || (room.actionsInHand >= activePlayers.length && (mine.seen || activePlayers.length === 2));
+  const compareTargets = activePlayers.filter((player) => player.id !== mine.id && (room.compareTargetIds || []).includes(player.id));
+  const compareCosts = compareTargets.map((target) => Number(room.compareCosts?.[target.id]) || room.currentBet * (mine.seen && !target.seen ? 2 : 1));
+  const affordableCompare = compareCosts.some((cost) => mine.chips >= cost);
+  const compareCostLabel = compareCosts.length && compareCosts.every((cost) => cost === compareCosts[0]) ? compareCosts[0] : '选择费用';
   const nextLevel = BET_LEVELS.find((level) => level > room.currentBet);
   if (raiseOpen) {
     const levels = BET_LEVELS.filter((level) => level > room.currentBet && mine.chips >= level * factor);
@@ -262,7 +266,7 @@ function renderActions(mine, turnPlayer) {
     <button data-action="see" ${mine.seen ? 'disabled' : ''}>看牌</button>
     <button data-action="call" class="main-action" ${mine.chips < callCost ? 'disabled' : ''}>跟注<small>${callCost}</small></button>
     <button data-action="raise" ${!nextLevel || mine.chips < nextLevel * factor ? 'disabled' : ''}>加注<small>选择档位</small></button>
-    <button type="button" data-action="compare" class="compare-action" ${!compareReady || mine.chips < callCost ? 'disabled' : ''}>比牌<small>${compareReady ? callCost : (room.compareHint || '不可比')}</small></button>`;
+    <button type="button" data-action="compare" class="compare-action" ${!compareReady || !affordableCompare ? 'disabled' : ''}>比牌<small>${compareReady ? compareCostLabel : (room.compareHint || '不可比')}</small></button>`;
   $('#actions').querySelectorAll('[data-action]').forEach((button) => button.onclick = () => handleAction(button.dataset.action));
 }
 
@@ -305,19 +309,23 @@ function showRaiseSheet() {
 }
 
 function showCompareTargets() {
+  const mine = room.players.find((player) => player.id === viewerId());
   const allowedTargets = new Set(room.compareTargetIds || []);
   const activeOpponents = room.players.filter((player) => !player.folded && player.id !== viewerId());
   const choices = room.players.filter((player) => allowedTargets.has(player.id));
   if (!choices.length && activeOpponents.length === 1) choices.push(activeOpponents[0]);
+  const costFor = (target) => Number(room.compareCosts?.[target.id]) || room.currentBet * (mine?.seen && !target.seen ? 2 : 1);
   if (choices.length === 1) {
     const target = choices[0];
-    return confirmAction('确认比牌', `确定与“${target.name}”比牌吗？牌面仅比牌双方可见。`, () => emit('action', { code: room.code, action: 'compare', targetId: target.id }));
+    const cost = costFor(target);
+    return confirmAction('确认比牌', `确定支付 ${cost} 与“${target.name}”比牌吗？牌面仅比牌双方可见。`, () => emit('action', { code: room.code, action: 'compare', targetId: target.id }));
   }
-  showSheet(`<h3>选择比牌对手</h3><p class="meta">只有比牌双方能看到牌面，其他玩家只能看到胜负结果。</p>${choices.map((player) => `<button class="player-choice" data-target="${esc(player.id)}"><span class="avatar-small">${esc(player.name[0])}</span>${esc(player.name)} · ${player.chips}筹码</button>`).join('')}`);
+  showSheet(`<h3>选择比牌对手</h3><p class="meta">只有比牌双方能看到牌面，其他玩家只能看到胜负结果。</p>${choices.map((player) => { const cost = costFor(player); return `<button class="player-choice" data-target="${esc(player.id)}" ${mine.chips < cost ? 'disabled' : ''}><span class="avatar-small">${esc(player.name[0])}</span>${esc(player.name)} · 支付${cost}</button>`; }).join('')}`);
   $('#sheetContent').querySelectorAll('[data-target]').forEach((button) => button.onclick = () => {
     const target = room.players.find((player) => player.id === button.dataset.target);
+    const cost = costFor(target);
     closeSheet();
-    confirmAction('确认比牌', `确定与“${target?.name || '该玩家'}”比牌吗？牌面仅比牌双方可见。`, () => emit('action', { code: room.code, action: 'compare', targetId: button.dataset.target }));
+    confirmAction('确认比牌', `确定支付 ${cost} 与“${target?.name || '该玩家'}”比牌吗？牌面仅比牌双方可见。`, () => emit('action', { code: room.code, action: 'compare', targetId: button.dataset.target }));
   });
 }
 

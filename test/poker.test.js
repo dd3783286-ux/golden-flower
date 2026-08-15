@@ -207,6 +207,26 @@ test('剩两人时明牌玩家可以看闷牌玩家并按2倍支付', () => {
   assert.equal(reveal.cost, expectedCost);
 });
 
+test('明牌玩家与明牌玩家比牌按1倍支付', () => {
+  const room = fundedRoom(500, 2);
+  startGame(room, '1', () => 0);
+  const firstPlayer = room.players[room.turn];
+  act(room, firstPlayer.id, 'call');
+  const secondPlayer = room.players[room.turn];
+  act(room, secondPlayer.id, 'see');
+  act(room, secondPlayer.id, 'call');
+  const challenger = room.players[room.turn];
+  const target = room.players.find((player) => player.id !== challenger.id && !player.folded);
+  act(room, challenger.id, 'see');
+  const expectedCost = room.currentBet;
+  const view = publicRoom(room, challenger.id);
+  assert.equal(view.compareCosts[target.id], expectedCost);
+  const reveal = showdown(room, challenger.id, target.id);
+  assert.equal(reveal.cost, expectedCost);
+  const compareEntry = room.ledger.findLast((entry) => entry.playerId === challenger.id && entry.type === '比牌费用');
+  assert.equal(compareEntry.amount, -expectedCost);
+});
+
 test('最终比牌后牌面保留到玩家点击下一局', () => {
   const room = fundedRoom();
   startGame(room, '1', () => 0);
