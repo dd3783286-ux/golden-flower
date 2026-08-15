@@ -1,0 +1,8 @@
+Card faces:
+https://github.com/younestouati/playing-cards-standard-deck
+License: LGPL-3.0 (see LICENSE in this directory)
+
+Blue card back:
+https://github.com/saulspatz/SVGCards
+Decks/Vertical2/svgs/blueBack.svg
+The SVGCards repository author placed the graphics in the public domain.

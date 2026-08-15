@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: three-card-friends
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOW_DEV_LOGIN
+        value: "true"
+      - key: SESSION_SECRET
+        generateValue: true
