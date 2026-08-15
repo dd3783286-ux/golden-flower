@@ -95,6 +95,7 @@ test('第一局随机庄家，后续顺时针轮庄', () => {
   assert.equal(room.dealer, 0);
   assert.equal(room.turn, 1);
   act(room, '2', 'fold');
+  assert.equal(room.lastAction.type, 'fold');
   room.players.forEach((item) => setReady(room, item.id, true));
   startGame(room, '1', () => 0.8);
   assert.equal(room.dealer, 1);
@@ -106,6 +107,7 @@ test('闷牌1倍、明牌2倍，看牌后仍由本人操作', () => {
   startGame(room, '1', () => 0);
   const second = room.players[1];
   act(room, '2', 'call');
+  assert.deepEqual({ type: room.lastAction.type, amount: room.lastAction.amount }, { type: 'call', amount: 1 });
   assert.equal(second.chips, 498);
   act(room, '1', 'see');
   assert.equal(room.turn, 0);
@@ -118,6 +120,7 @@ test('成熟下注档位只能向上选择', () => {
   const room = fundedRoom();
   startGame(room, '1', () => 0);
   act(room, '2', 'raise', 5);
+  assert.deepEqual({ type: room.lastAction.type, stake: room.lastAction.stake }, { type: 'raise', stake: 5 });
   assert.equal(room.currentBet, 5);
   assert.ok(BET_LEVELS.includes(room.currentBet));
   assert.throws(() => act(room, '1', 'raise', 2), /高于当前档位/);
@@ -133,6 +136,7 @@ test('完成首轮下注后才能比牌，只有比牌双方能看到牌面', ()
   const target = room.players.find((item) => item.id !== challenger.id && !item.folded);
   assert.equal(publicRoom(room, challenger.id).canCompare, true);
   const reveal = showdown(room, challenger.id, target.id);
+  assert.deepEqual({ type: room.lastAction.type, targetName: room.lastAction.targetName }, { type: 'compare', targetName: target.name });
   assert.equal(reveal.challengerHand.length, 3);
   const participantState = publicRoom(room, challenger.id);
   assert.ok(participantState.players.find((item) => item.id === challenger.id).hand.every(Boolean));

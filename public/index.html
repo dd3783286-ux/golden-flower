@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#071f1a">
   <title>三张牌</title>
   <link rel="preload" as="image" href="/assets/cards-standard/classic-navy-back-v3.jpg">
-  <link rel="stylesheet" href="/style.css?v=20260815-36">
+  <link rel="stylesheet" href="/style.css?v=20260815-37">
 </head>
 <body>
   <main id="app">
@@ -44,6 +44,7 @@
         <div class="felt-rim"><div class="felt">
           <div class="table-brand">GOOD LUCK</div>
           <div class="pot-label">筹码池</div><b id="pot" class="pot-value">0</b>
+          <div id="tableAction" class="table-action hidden" aria-live="polite"></div>
           <div class="bet-info">底注 <b id="baseBet">1</b><i></i>当前档 <b id="currentBet">1</b><i></i>第 <b id="round">0</b> 局</div>
         </div></div>
         <div id="players" class="players"></div>
@@ -85,6 +86,6 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=20260815-40"></script>
+  <script src="/app.js?v=20260815-41"></script>
 </body>
 </html>

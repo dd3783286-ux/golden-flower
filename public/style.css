@@ -183,4 +183,11 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .seat-state.state-folded{color:#fff7f7;background:linear-gradient(180deg,#df4b57,#8f1725);border-color:#ffadb5;font-size:12px;font-weight:950;letter-spacing:1px;text-shadow:0 1px 2px #53000b;box-shadow:0 0 0 2px #e94a5940,0 0 15px #e73847aa,0 4px 10px #0009}
 .player-seat.folded .avatar{filter:grayscale(.75);border-color:#a74750}
 
+/* Brief, one-shot action feedback inside the chip pool. */
+.felt{position:relative}
+.table-action{position:absolute;z-index:8;left:50%;top:49%;transform:translate(-50%,-50%);min-width:118px;max-width:78%;padding:7px 13px;border:1px solid #ffe79a;border-radius:16px;background:linear-gradient(150deg,#163f36f2,#071c18f5);box-shadow:0 0 0 3px #f5c85824,0 8px 24px #000b;text-align:center;white-space:nowrap;pointer-events:none}
+.table-action small,.table-action strong,.table-action em{display:block;line-height:1.1}.table-action small{max-width:150px;overflow:hidden;text-overflow:ellipsis;color:#d8eee8;font-size:10px}.table-action strong{margin:3px 0;color:#ffe27b;font-size:18px;letter-spacing:1px;text-shadow:0 2px 5px #000}.table-action em{color:#bcd6cf;font-size:10px;font-style:normal}
+.table-action.action-raise{border-color:#ffd161;background:linear-gradient(150deg,#684313f5,#201506f5)}.table-action.action-compare{border-color:#d6b0ff;background:linear-gradient(150deg,#4c246cf5,#170b25f5)}.table-action.action-fold{border-color:#ff8790;background:linear-gradient(150deg,#772634f5,#27090ef5)}.table-action.action-fold strong{color:#ffb0b6}
+@media(max-width:430px){.table-action{min-width:104px;padding:6px 11px}.table-action strong{font-size:16px}}
+
 @media (prefers-reduced-motion:reduce){.seat-state{animation:none!important}}

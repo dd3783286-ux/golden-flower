@@ -13,6 +13,8 @@ let lastSeenRound = 0;
 let lastSeenState = false;
 let visualStateRound = 0;
 let previousPlayerVisualStates = new Map();
+let lastTableActionId = null;
+let tableActionTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 const BET_LEVELS = [1, 2, 5, 10, 20, 50, 100, 200, 500];
@@ -154,6 +156,7 @@ function render() {
   const owner = room.players.find((player) => player.id === room.ownerId);
   $('#ownerName').textContent = `房主 ${owner?.name || '-'}`;
   $('#table').classList.toggle('is-waiting', room.status === 'waiting');
+  renderTableAction();
   renderPlayers();
   renderHand(mine);
   renderActions(mine, turnPlayer);
@@ -161,6 +164,30 @@ function render() {
   renderCompare();
   renderWinner();
   renderTrustee(mine);
+}
+
+function renderTableAction() {
+  const action = room.lastAction;
+  const element = $('#tableAction');
+  if (!element || !action || action.id === lastTableActionId) return;
+  lastTableActionId = action.id;
+  if (action.round !== room.round || Date.now() - action.at > 5_000) return;
+
+  const descriptions = {
+    call: ['跟注', action.amount ? `投入 ${action.amount}` : ''],
+    raise: [`加注至 ${action.stake}`, action.amount ? `投入 ${action.amount}` : ''],
+    compare: [`比牌 ${action.targetName || ''}`.trim(), action.amount ? `投入 ${action.amount}` : ''],
+    fold: ['弃牌', action.automated ? '托管自动操作' : '']
+  };
+  const [label, detail] = descriptions[action.type] || [action.type, ''];
+  element.innerHTML = `<small>${esc(action.playerName)}</small><strong>${esc(label)}</strong>${detail ? `<em>${esc(detail)}</em>` : ''}`;
+  element.className = `table-action action-${esc(action.type)}`;
+  clearTimeout(tableActionTimer);
+  const keyframes = action.type === 'fold'
+    ? [{ opacity: 0, transform: 'translate(-50%,-35%) scale(1.35)' }, { opacity: 1, transform: 'translate(-50%,-50%) scale(1)', offset: .28 }, { opacity: 0, transform: 'translate(-50%,-70%) scale(.92)' }]
+    : [{ opacity: 0, transform: 'translate(-50%,15%) scale(.45)' }, { opacity: 1, transform: 'translate(-50%,-58%) scale(1.12)', offset: .36 }, { opacity: 1, transform: 'translate(-50%,-50%) scale(1)', offset: .72 }, { opacity: 0, transform: 'translate(-50%,-62%) scale(.94)' }];
+  element.animate(keyframes, { duration: 1_650, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  tableActionTimer = setTimeout(() => element.classList.add('hidden'), 1_650);
 }
 
 function renderPlayers() {

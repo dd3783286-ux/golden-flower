@@ -25,6 +25,7 @@ export function makeRoom(code, owner) {
     turnDeadline: null,
     special235: true,
     reveal: null,
+    lastAction: null,
     winner: null,
     createdAt: now(),
     updatedAt: now(),
@@ -76,6 +77,21 @@ function recordLedger(room, player, type, amount, note = '') {
     note
   });
   if (room.ledger.length > 1000) room.ledger = room.ledger.slice(-1000);
+}
+
+function recordTableAction(room, player, type, { amount = 0, stake = 0, targetName = '', automated = false } = {}) {
+  room.lastAction = {
+    id: requestId('action'),
+    at: now(),
+    round: room.round,
+    playerId: player.id,
+    playerName: player.name,
+    type,
+    amount: Number(amount),
+    stake: Number(stake),
+    targetName,
+    automated: Boolean(automated)
+  };
 }
 
 export function addPlayer(room, player) {
@@ -260,6 +276,7 @@ export function startGame(room, requesterId, random = Math.random) {
   room.currentBet = room.baseBet;
   room.round += 1;
   room.actionsInHand = 0;
+  room.lastAction = null;
   room.winner = null;
   room.reveal = null;
   room.players.forEach((player, index) => {
@@ -298,6 +315,7 @@ export function act(room, playerId, action, raiseTo) {
   }
   if (action === 'fold') {
     player.folded = true;
+    recordTableAction(room, player, 'fold');
     room.log.push(`${player.name} 弃牌`);
     settleOrAdvance(room, index);
     touch(room);
@@ -317,6 +335,7 @@ export function act(room, playerId, action, raiseTo) {
   player.bet += cost;
   room.pot += cost;
   room.actionsInHand += 1;
+  recordTableAction(room, player, action, { amount: cost, stake });
   room.log.push(`${player.name}${action === 'raise' ? '加注' : '跟注'} ${cost}${player.seen ? '（明牌）' : '（闷牌）'}`);
   settleOrAdvance(room, index);
   touch(room);
@@ -344,6 +363,7 @@ export function showdown(room, playerId, targetId) {
   const loser = result > 0 ? target : player;
   loser.folded = true;
   loser.eliminatedByCompare = true;
+  recordTableAction(room, player, 'compare', { amount: cost, stake: room.currentBet, targetName: target.name });
   room.reveal = {
     id: requestId('reveal'),
     expiresAt: now() + 3_000,
@@ -396,9 +416,11 @@ export function expireTurn(room, currentTime = now()) {
     player.bet += cost;
     room.pot += cost;
     room.actionsInHand += 1;
+    recordTableAction(room, player, 'call', { amount: cost, stake: room.currentBet, automated: true });
     room.log.push(timedOut ? `${player.name} 30秒未操作，进入托管并自动跟注 ${cost}` : `${player.name} 托管自动跟注 ${cost}`);
   } else {
     player.folded = true;
+    recordTableAction(room, player, 'fold', { automated: true });
     room.log.push(`${player.name} 托管时筹码不足，自动弃牌`);
   }
   settleOrAdvance(room, room.turn);
@@ -428,6 +450,7 @@ export function leavePlayer(room, playerId) {
   const player = room.players[index];
   if (room.status === 'playing' && !player.folded) {
     player.folded = true;
+    recordTableAction(room, player, 'fold');
     player.leaveAfterRound = true;
     player.connected = false;
     room.log.push(`${player.name} 退出房间并自动弃牌`);
