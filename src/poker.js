@@ -44,7 +44,7 @@ export function compareHands(a, b) {
 }
 
 export function isDifferentSuit235(cards) {
-  return cards.map((c) => c.rank).sort((a, b) => a - b).join(',') === '2,3,5' && new Set(cards.map((c) => c.suit)).size === 3;
+  return cards.map((c) => c.rank).sort((a, b) => a - b).join(',') === '2,3,5' && new Set(cards.map((c) => c.suit)).size > 1;
 }
 
 export function compareHandsWith235(a, b, enabled = true) {

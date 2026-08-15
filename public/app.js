@@ -15,6 +15,10 @@ let visualStateRound = 0;
 let previousPlayerVisualStates = new Map();
 let lastTableActionId = null;
 let tableActionTimer = null;
+let compareRevealTimer = null;
+let winnerRevealTimer = null;
+let recordCache = null;
+let deckWarmingStarted = false;
 
 const $ = (selector) => document.querySelector(selector);
 const BET_LEVELS = [1, 2, 5, 10, 20, 50, 100, 200, 500];
@@ -46,6 +50,24 @@ function showScreen(selector) {
 
 function viewerId() { return room?.viewerId || me?.id; }
 
+function resetRoomVisualState() {
+  lastAnimatedRound = 0;
+  lastWinnerId = null;
+  previousPot = 0;
+  raiseOpen = false;
+  lastTurnKey = '';
+  dismissedRevealId = null;
+  lastSeenRound = 0;
+  lastSeenState = false;
+  visualStateRound = 0;
+  previousPlayerVisualStates = new Map();
+  lastTableActionId = null;
+  recordCache = null;
+  clearTimeout(tableActionTimer);
+  clearTimeout(compareRevealTimer);
+  clearTimeout(winnerRevealTimer);
+}
+
 async function init() {
   try {
     const data = await fetch('/api/me').then((response) => response.json());
@@ -57,6 +79,7 @@ async function init() {
       $('#user').textContent = me.name;
       showScreen('#lobby');
       connect();
+      warmCardDeck();
     } else {
       showScreen('#login');
     }
@@ -82,6 +105,7 @@ function connect() {
   socket.on('disconnect', () => setNetwork(false));
   socket.on('connect_error', () => setNetwork(false));
   socket.on('room', (state) => {
+    if (room?.code && room.code !== state.code) resetRoomVisualState();
     const potIncreased = room && state.pot > previousPot;
     const nextTurnKey = `${state.round}:${state.turn}`;
     if (nextTurnKey !== lastTurnKey) raiseOpen = false;
@@ -130,6 +154,7 @@ $('#logout').onclick = () => confirmAction('切换账号', '将退出当前登�
 });
 
 $('#create').onclick = () => emit('create-room', {}, (response) => {
+  resetRoomVisualState();
   history.replaceState(null, '', `/?room=${response.code}`);
   showScreen('#table');
 });
@@ -137,6 +162,7 @@ $('#joinForm').onsubmit = (event) => {
   event.preventDefault();
   const code = $('#roomCode').value.trim();
   emit('join-room', { code }, () => {
+    resetRoomVisualState();
     history.replaceState(null, '', `/?room=${code}`);
     showScreen('#table');
   });
@@ -272,7 +298,8 @@ function renderActions(mine, turnPlayer) {
       const needs = [player.chips < room.baseBet ? '筹码' : '', !player.ready ? '准备' : ''].filter(Boolean);
       return `${player.name}：${needs.join('、')}`;
     });
-    const summary = available.length >= 2 ? `${available.length}人已准备，可以开局` : `${room.players.length}人在线 · ${available.length}人已准备`;
+    const onlineCount = room.players.filter((player) => player.connected).length;
+    const summary = available.length >= 2 ? `${available.length}人已准备，可以开局` : `${onlineCount}人在线 · ${available.length}人已准备`;
     const readyDetail = blockers.length ? `<div class="ready-detail">还需 ${blockers.map(esc).join('；')}</div>` : '';
     const ownPending = (room.chipRequests || []).find((request) => request.playerId === viewerId() && request.status === 'pending');
     const quickChips = mine.chips < room.baseBet ? ownPending
@@ -388,6 +415,13 @@ function showCompareTargets() {
 function renderCompare() {
   const reveal = room.reveal;
   const visible = reveal && reveal.id !== dismissedRevealId;
+  const compareDelay = room.lastAction?.type === 'compare' ? 1_050 - (Date.now() - room.lastAction.at) : 0;
+  if (visible && compareDelay > 0) {
+    $('#compareOverlay').classList.add('hidden');
+    clearTimeout(compareRevealTimer);
+    compareRevealTimer = setTimeout(() => { compareRevealTimer = null; if (room?.reveal?.id === reveal.id) renderCompare(); }, compareDelay);
+    return;
+  }
   $('#compareOverlay').classList.toggle('hidden', !visible);
   if (!visible) return;
   const side = (name, cards, type, id) => `<div class="compare-side ${id === reveal.winnerId ? 'winner' : 'loser'}"><b>${esc(name)}</b><div class="mini-cards">${cards.map((card) => cardHtml(card)).join('')}</div><strong>${esc(type || '牌面保密')}</strong></div>`;
@@ -407,6 +441,13 @@ $('#compareContinue').onclick = () => {
 function renderWinner() {
   if (!room.winner) { $('#resultOverlay').classList.add('hidden'); return; }
   if (room.reveal || room.winner.id === lastWinnerId) return;
+  const foldDelay = room.lastAction?.type === 'fold' ? 1_050 - (Date.now() - room.lastAction.at) : 0;
+  if (foldDelay > 0) {
+    $('#resultOverlay').classList.add('hidden');
+    clearTimeout(winnerRevealTimer);
+    winnerRevealTimer = setTimeout(() => { winnerRevealTimer = null; if (room?.winner) renderWinner(); }, foldDelay);
+    return;
+  }
   lastWinnerId = room.winner.id;
   $('#resultTitle').textContent = `${room.winner.winnerName} 赢得本局`;
   $('#resultText').textContent = `获得筹码池 ${room.winner.pot}`;
@@ -468,10 +509,13 @@ function showRepayChoices(debtId) {
   $('#sheetContent').querySelectorAll('[data-repay-amount]').forEach((button) => button.onclick = () => { const amount = Number(button.dataset.repayAmount); button.disabled = true; button.textContent = '提交中'; emit('repay-borrow', { code: room.code, debtId, amount }, () => { closeSheet(); toast(`已归还 ${amount} 筹码`); }); });
 }
 
-$('#logButton').onclick = () => showLedger();
+$('#logButton').onclick = () => emit('get-records', { code: room.code }, (response) => {
+  recordCache = response.records;
+  showLedger('all', recordCache);
+});
 
-function showLedger(selectedPlayer = 'all') {
-  const ledger = room.ledger || [];
+function showLedger(selectedPlayer = 'all', records = recordCache || {}) {
+  const ledger = records.ledger || [];
   const filtered = selectedPlayer === 'all' ? ledger : ledger.filter((entry) => entry.playerId === selectedPlayer);
   const summaries = room.players.map((player) => {
     const entries = ledger.filter((entry) => entry.playerId === player.id);
@@ -485,14 +529,14 @@ function showLedger(selectedPlayer = 'all') {
     const time = new Date(entry.at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
     return `<div class="ledger-row"><div><b>${esc(entry.playerName)}</b><span>${entry.round ? `第${entry.round}局 · ` : ''}${esc(entry.type)} · ${time}</span><small>${esc(entry.note || '')}</small></div><div class="ledger-money ${entry.amount >= 0 ? 'plus' : 'minus'}"><b>${sign}${entry.amount}</b><span>余额 ${entry.balance}</span></div></div>`;
   }).join('') || '<p class="empty-ledger">暂无筹码流水</p>';
-  const events = room.log.slice(-30).reverse().map((line) => `<div class="event-line">${esc(line)}</div>`).join('') || '<p>暂无事件记录</p>';
+  const events = (records.log || []).slice(-30).reverse().map((line) => `<div class="event-line">${esc(line)}</div>`).join('') || '<p>暂无事件记录</p>';
   showSheet(`<h3>牌局记录</h3><div class="ledger-summaries">${summaries}</div><div class="ledger-filters">${filters}</div><div class="ledger-list">${rows}</div><details class="event-details"><summary>查看事件记录</summary>${events}</details>`);
-  $('#sheetContent').querySelectorAll('[data-ledger-player]').forEach((button) => button.onclick = () => showLedger(button.dataset.ledgerPlayer));
+  $('#sheetContent').querySelectorAll('[data-ledger-player]').forEach((button) => button.onclick = () => showLedger(button.dataset.ledgerPlayer, records));
 }
 $('#rulesButton').onclick = showRules;
 $('#tableRulesButton').onclick = showRules;
 function showRules() {
-  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，第一局随机庄家，以后顺时针轮庄，庄家下家先操作。</li><li>闷牌按当前档位支付；看牌免费且不换人，看牌后下注为2倍。</li><li>加注档位：1、2、5、10、20、50、100、200、500。</li><li>完成第一轮下注后可以比牌；明牌发起支付2倍，闷牌发起支付1倍。闷牌只有在剩两名玩家时才能主动比牌，包括双方都闷牌的“闷开”。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>不同花色235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒，超时或离线后进入托管并自动跟注；明牌按2倍跟注，筹码不足时自动弃牌。</li></ol>`);
+  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，第一局随机庄家，以后顺时针轮庄，庄家下家先操作。</li><li>闷牌按当前档位支付；看牌免费且不换人，看牌后下注为2倍。</li><li>加注档位：1、2、5、10、20、50、100、200、500。</li><li>完成第一轮下注后可以比牌。明牌对明牌按当前档位支付；明牌主动比闷牌支付2倍；闷牌主动比牌按当前档位支付。闷牌只有在剩两名玩家时才能主动比牌。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；玩家离线时，每轮仍保留30秒操作时间，筹码不足时自动弃牌。</li></ol>`);
 }
 
 $('#leave').onclick = () => confirmAction('退出房间', room?.status === 'playing' ? '退出后将自动弃牌，并在本局结束后离开房间。' : '确定退出当前房间吗？', async () => {
@@ -500,7 +544,7 @@ $('#leave').onclick = () => confirmAction('退出房间', room?.status === 'play
   const data = await response.json();
   if (!response.ok) return toast(data.error || '退出失败，请重试');
   room = null;
-  previousPot = 0;
+  resetRoomVisualState();
   history.replaceState(null, '', '/');
   showScreen('#lobby');
 });
@@ -538,13 +582,17 @@ $('#invite').onclick = async () => {
     else await navigator.clipboard.writeText(text);
     toast('邀请信息已准备好');
   } catch (error) {
-    if (error.name !== 'AbortError') showSheet(`<h3>邀请好友</h3><p>房间号：<b>${room.code}</b></p><input value="${esc(link)}" readonly onclick="this.select()"><p class="meta">长按上面的链接复制后发送给好友。</p>`);
+    if (error.name !== 'AbortError') {
+      showSheet(`<h3>邀请好友</h3><p>房间号：<b>${room.code}</b></p><input id="inviteLink" aria-label="邀请链接" value="${esc(link)}" readonly><p class="meta">长按上面的链接复制后发送给好友。</p>`);
+      $('#inviteLink').onclick = () => $('#inviteLink').select();
+    }
   }
 };
 
 function showSheet(html) {
   $('#sheetContent').innerHTML = html;
   $('#sheetBackdrop').classList.remove('hidden');
+  setTimeout(() => $('#sheet').querySelector('button, input, [tabindex]')?.focus(), 0);
 }
 function closeSheet() { $('#sheetBackdrop').classList.add('hidden'); }
 $('#closeSheet').onclick = closeSheet;
@@ -558,6 +606,12 @@ function confirmAction(title, text, onConfirm) {
 }
 $('#confirmCancel').onclick = () => $('#confirmOverlay').classList.add('hidden');
 $('#closeResult').onclick = () => $('#resultOverlay').classList.add('hidden');
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (!$('#confirmOverlay').classList.contains('hidden')) $('#confirmOverlay').classList.add('hidden');
+  else if (!$('#sheetBackdrop').classList.contains('hidden')) closeSheet();
+  else if (!$('#resultOverlay').classList.contains('hidden')) $('#resultOverlay').classList.add('hidden');
+});
 
 function animateChip() {
   const chip = $('#chipFlight');
@@ -577,6 +631,23 @@ function updateCountdown() {
   if (label) label.textContent = seconds;
 }
 setInterval(updateCountdown, 250);
+
+function warmCardDeck() {
+  if (deckWarmingStarted) return;
+  deckWarmingStarted = true;
+  const files = [];
+  for (const suit of Object.values(CARD_SUIT_NAMES)) for (let cardRank = 1; cardRank <= 13; cardRank += 1) files.push(`${cardRank}${suit}.svg`);
+  let nextIndex = 0;
+  const loadNext = () => {
+    if (nextIndex >= files.length) return;
+    const image = new Image();
+    image.onload = image.onerror = loadNext;
+    image.src = `${CARD_ASSET_ROOT}/${files[nextIndex++]}`;
+  };
+  const begin = () => { for (let index = 0; index < 4; index += 1) loadNext(); };
+  if ('requestIdleCallback' in window) window.requestIdleCallback(begin, { timeout: 2_000 });
+  else setTimeout(begin, 1_000);
+}
 
 function cardHtml(card, extraClass = '', inlineStyle = '') {
   const className = `card ${card ? '' : 'back'} ${extraClass}`.trim();

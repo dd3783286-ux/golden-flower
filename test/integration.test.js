@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { io as clientIo } from 'socket.io-client';
 
 process.env.NODE_ENV = 'test';
-const { server, rooms } = await import('../src/server.js');
+const { FileSessionStore, server, rooms } = await import('../src/server.js');
 
 function emitAck(socket, event, data) {
   return new Promise((resolve, reject) => socket.timeout(3_000).emit(event, data, (error, response) => error ? reject(error) : resolve(response)));
@@ -56,6 +59,10 @@ test('双客户端完成建房、准备、审批、重连、下注和真正退�
   assert.equal((await emitAck(owner, 'review-chips', { code: created.code, requestId: ownerChip.id, approved: true })).ok, true);
   assert.equal((await emitAck(owner, 'review-chips', { code: created.code, requestId: guestChip.id, approved: true })).ok, true);
   await waitUntil(() => ownerRoom.players.every((player) => player.chips === 500));
+  assert.deepEqual(ownerRoom.ledger, []);
+  const records = await emitAck(owner, 'get-records', { code: created.code });
+  assert.equal(records.ok, true);
+  assert.ok(records.records.ledger.length >= 2);
 
   assert.equal((await emitAck(owner, 'set-ready', { code: created.code, ready: true })).ok, true);
   assert.equal((await emitAck(guest, 'set-ready', { code: created.code, ready: true })).ok, true);
@@ -92,4 +99,41 @@ test('双客户端完成建房、准备、审批、重连、下注和真正退�
   assert.equal(unexpectedlyRejoined, false);
   assert.equal([...rooms.values()][0]?.players.some((player) => player.name === firstName), false);
   remainingSocket.disconnect();
+});
+
+test('同一账号打开两个页面，关闭一个不会把另一个判为离线', async (t) => {
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const cookie = await login(origin, '双页面玩家');
+  let latestRoom;
+  const first = connect(origin, cookie, (state) => { latestRoom = state; });
+  const second = connect(origin, cookie, (state) => { latestRoom = state; });
+  t.after(() => { first.disconnect(); second.disconnect(); rooms.clear(); server.close(); });
+  await Promise.all([new Promise((resolve) => first.on('connect', resolve)), new Promise((resolve) => second.on('connect', resolve))]);
+  const created = await emitAck(first, 'create-room', {});
+  assert.equal((await emitAck(second, 'join-room', { code: created.code })).ok, true);
+  await waitUntil(() => latestRoom?.players[0]?.connected === true);
+  first.disconnect();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(rooms.get(created.code).players[0].connected, true);
+});
+
+test('安全响应头已启用', async (t) => {
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  t.after(() => { rooms.clear(); server.close(); });
+  const response = await fetch(`${origin}/api/health`);
+  assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(response.headers.get('x-frame-options'), 'DENY');
+  assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+});
+
+test('文件会话存储可在重新实例化后恢复登录', async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'golden-flower-session-'));
+  const file = path.join(directory, 'sessions.json');
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const first = new FileSessionStore(file);
+  await new Promise((resolve, reject) => first.set('session-1', { cookie: { expires: new Date(Date.now() + 60_000) }, user: { id: 'u1', name: '玩家' } }, (error) => error ? reject(error) : resolve()));
+  const restored = await new Promise((resolve, reject) => new FileSessionStore(file).get('session-1', (error, value) => error ? reject(error) : resolve(value)));
+  assert.deepEqual(restored.user, { id: 'u1', name: '玩家' });
 });

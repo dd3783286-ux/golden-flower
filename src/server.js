@@ -35,19 +35,112 @@ const port = Number(process.env.PORT || 3000);
 const baseUrl = process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataFile = path.join(dirname, '../data/rooms.json');
-const production = process.env.NODE_ENV === 'production';
+const roomsBackupFile = `${dataFile}.bak`;
+const sessionFile = path.join(dirname, '../data/sessions.json');
+const sessionSecretFile = path.join(dirname, '../data/session-secret.txt');
 const cachedAssetExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.woff', '.woff2']);
+let saveTimer = null;
+
+class FileSessionStore extends session.Store {
+  constructor(file) {
+    super();
+    this.file = file;
+    this.sessions = new Map();
+    this.load();
+  }
+
+  load() {
+    try {
+      if (!fs.existsSync(this.file)) return;
+      const saved = JSON.parse(fs.readFileSync(this.file, 'utf8'));
+      const current = Date.now();
+      for (const [id, value] of Object.entries(saved)) {
+        if (!value.expiresAt || value.expiresAt > current) this.sessions.set(id, value);
+      }
+    } catch (error) {
+      console.error('读取登录会话失败：', error.message);
+    }
+  }
+
+  persist() {
+    try {
+      fs.mkdirSync(path.dirname(this.file), { recursive: true });
+      const temporary = `${this.file}.tmp`;
+      fs.writeFileSync(temporary, JSON.stringify(Object.fromEntries(this.sessions)), 'utf8');
+      fs.renameSync(temporary, this.file);
+    } catch (error) {
+      console.error('保存登录会话失败：', error.message);
+    }
+  }
+
+  get(id, callback) {
+    const value = this.sessions.get(id);
+    if (!value || (value.expiresAt && value.expiresAt <= Date.now())) {
+      if (value) { this.sessions.delete(id); this.persist(); }
+      return callback(null, null);
+    }
+    callback(null, value.session);
+  }
+
+  set(id, value, callback = () => {}) {
+    const expiresAt = value.cookie?.expires ? new Date(value.cookie.expires).getTime() : Date.now() + 30 * 864e5;
+    this.sessions.set(id, { expiresAt, session: value });
+    this.persist();
+    callback(null);
+  }
+
+  destroy(id, callback = () => {}) {
+    this.sessions.delete(id);
+    this.persist();
+    callback(null);
+  }
+
+  touch(id, value, callback = () => {}) { this.set(id, value, callback); }
+}
+
+function sessionSecret() {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  if (process.env.NODE_ENV === 'test') return 'test-session-secret';
+  fs.mkdirSync(path.dirname(sessionSecretFile), { recursive: true });
+  if (fs.existsSync(sessionSecretFile)) return fs.readFileSync(sessionSecretFile, 'utf8').trim();
+  const generated = crypto.randomBytes(48).toString('base64url');
+  fs.writeFileSync(sessionSecretFile, generated, { encoding: 'utf8', mode: 0o600 });
+  return generated;
+}
 
 const sessionMiddleware = session({
-  secret: process.env.SESSION_SECRET || 'dev-only-secret',
+  secret: sessionSecret(),
+  store: process.env.NODE_ENV === 'test' ? undefined : new FileSessionStore(sessionFile),
   resave: false,
   saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', secure: production || baseUrl.startsWith('https://'), maxAge: 30 * 864e5 }
+  cookie: { httpOnly: true, sameSite: 'lax', secure: 'auto', maxAge: 30 * 864e5 }
 });
 
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws: wss:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
+  if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  next();
+});
 app.use(express.json({ limit: '16kb' }));
 app.use(sessionMiddleware);
+
+const requestBuckets = new Map();
+function limitSensitiveRequests(req, res, next) {
+  const key = req.ip || req.socket.remoteAddress || 'unknown';
+  const current = Date.now();
+  const bucket = requestBuckets.get(key) || { startedAt: current, count: 0 };
+  if (current - bucket.startedAt > 60_000) { bucket.startedAt = current; bucket.count = 0; }
+  bucket.count += 1;
+  requestBuckets.set(key, bucket);
+  if (bucket.count > 30) return res.status(429).json({ error: '操作过于频繁，请稍后再试' });
+  next();
+}
 app.use(express.static(path.join(dirname, '../public'), {
   // 页面代码保持实时更新；图片和字体缓存一天，避免每次操作重复下载牌面资源。
   etag: false,
@@ -71,7 +164,7 @@ app.get('/api/me', (req, res) => res.json({
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-app.post('/api/dev-login', (req, res) => {
+app.post('/api/dev-login', limitSensitiveRequests, (req, res) => {
   if (process.env.ALLOW_DEV_LOGIN === 'false') return res.status(403).json({ error: '测试登录已关闭' });
   const name = String(req.body.name || '').trim().slice(0, 12);
   if (!name) return res.status(400).json({ error: '请输入昵称' });
@@ -79,7 +172,7 @@ app.post('/api/dev-login', (req, res) => {
   req.session.save(() => res.json({ user: req.session.user }));
 });
 
-app.post('/api/change-name', (req, res) => {
+app.post('/api/change-name', limitSensitiveRequests, (req, res) => {
   const user = req.session.user;
   if (!user) return res.status(401).json({ error: '登录已失效' });
   const name = String(req.body.name || '').trim().slice(0, 12);
@@ -105,7 +198,13 @@ app.post('/api/change-name', (req, res) => {
   req.session.save(() => res.json({ ok: true, user }));
 });
 
-app.post('/api/logout', (req, res) => req.session.destroy(() => res.json({ ok: true })));
+app.post('/api/logout', (req, res) => {
+  const userId = req.session.user?.id;
+  if (userId && [...rooms.values()].some((room) => room.players.some((player) => player.id === userId))) {
+    return res.status(400).json({ error: '请先退出当前房间' });
+  }
+  req.session.destroy(() => res.json({ ok: true }));
+});
 
 app.post('/api/leave-room', (req, res) => {
   try {
@@ -121,7 +220,9 @@ app.post('/api/leave-and-logout', (req, res) => {
   const userId = req.session.user?.id;
   try {
     if (userId) leaveAllRoomsForUser(userId);
-  } catch {}
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
   req.session.destroy(() => res.json({ ok: true }));
 });
 
@@ -155,6 +256,15 @@ io.engine.use(sessionMiddleware);
 io.on('connection', (socket) => {
   const user = socket.request.session.user;
   if (!user) return socket.disconnect(true);
+  let eventWindowStarted = Date.now();
+  let eventCount = 0;
+  socket.use((_packet, next) => {
+    const current = Date.now();
+    if (current - eventWindowStarted > 10_000) { eventWindowStarted = current; eventCount = 0; }
+    eventCount += 1;
+    if (eventCount > 120) return next(new Error('操作过于频繁，请稍后再试'));
+    next();
+  });
 
   socket.on('create-room', (_ = {}, reply) => safe(reply, () => {
     leaveOtherRoom(socket, user.id);
@@ -193,9 +303,19 @@ io.on('connection', (socket) => {
   socket.on('start-game', ({ code }, reply) => mutate(reply, code, () => startGame(mustRoom(code), user.id)));
   socket.on('action', ({ code, action, targetId, raiseTo }, reply) => mutate(reply, code, () => action === 'compare' ? showdown(mustRoom(code), user.id, targetId) : act(mustRoom(code), user.id, action, raiseTo)));
 
+  socket.on('get-records', ({ code }, reply) => safe(reply, () => {
+    const room = mustRoom(code);
+    if (!room.players.some((player) => player.id === user.id)) throw new Error('你不在这个房间中');
+    return { records: {
+      ledger: (room.ledger || []).slice(-1000),
+      log: (room.log || []).slice(-500),
+      history: (room.history || []).slice(0, 30)
+    } };
+  }));
+
   socket.on('disconnect', () => {
     const room = rooms.get(socket.data.roomCode);
-    if (room && disconnectPlayer(room, user.id)) broadcast(room);
+    if (room && !hasOtherConnectedSocket(user.id, room.code, socket.id) && disconnectPlayer(room, user.id)) broadcast(room);
   });
 });
 
@@ -243,9 +363,21 @@ function leaveOtherRoom(socket, userId, exceptCode = null) {
   for (const room of rooms.values()) {
     if (room.code === exceptCode || !room.players.some((player) => player.id === userId)) continue;
     const result = leavePlayer(room, userId);
-    socket.leave(room.code);
+    for (const client of io.sockets.sockets.values()) {
+      if (client.request.session.user?.id !== userId) continue;
+      client.leave(room.code);
+      if (client.data.roomCode === room.code) client.data.roomCode = null;
+    }
     if (result.closed) deleteRoom(room.code); else broadcast(room);
   }
+}
+
+function hasOtherConnectedSocket(userId, code, excludedSocketId) {
+  for (const client of io.sockets.sockets.values()) {
+    if (client.id === excludedSocketId || !client.connected) continue;
+    if (client.data.roomCode === code && client.request.session.user?.id === userId) return true;
+  }
+  return false;
 }
 
 function joinSocket(socket, room, user) {
@@ -261,7 +393,7 @@ function joinSocket(socket, room, user) {
 
 function broadcast(room) {
   scheduleRoom(room);
-  saveRooms();
+  scheduleSaveRooms();
   for (const socketId of io.sockets.adapter.rooms.get(room.code) || []) {
     const client = io.sockets.sockets.get(socketId);
     if (client?.request.session.user) client.emit('room', publicRoom(room, client.request.session.user.id));
@@ -291,23 +423,39 @@ function deleteRoom(code) {
   clearTimeout(roomTimers.get(code));
   roomTimers.delete(code);
   rooms.delete(code);
-  saveRooms();
+  scheduleSaveRooms();
 }
 
 function saveRooms() {
   if (process.env.NODE_ENV === 'test') return;
   try {
     fs.mkdirSync(path.dirname(dataFile), { recursive: true });
-    fs.writeFileSync(dataFile, JSON.stringify([...rooms.values()], null, 2), 'utf8');
+    const temporary = `${dataFile}.tmp`;
+    fs.writeFileSync(temporary, JSON.stringify([...rooms.values()], null, 2), 'utf8');
+    if (fs.existsSync(dataFile)) fs.copyFileSync(dataFile, roomsBackupFile);
+    fs.renameSync(temporary, dataFile);
   } catch (error) {
     console.error('保存房间失败：', error.message);
   }
 }
 
+function scheduleSaveRooms() {
+  if (process.env.NODE_ENV === 'test') return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { saveTimer = null; saveRooms(); }, 100);
+  saveTimer.unref?.();
+}
+
 function loadRooms() {
-  if (process.env.NODE_ENV === 'test' || !fs.existsSync(dataFile)) return;
+  if (process.env.NODE_ENV === 'test' || (!fs.existsSync(dataFile) && !fs.existsSync(roomsBackupFile))) return;
   try {
-    const stored = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+    let stored;
+    try {
+      stored = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+    } catch (primaryError) {
+      stored = JSON.parse(fs.readFileSync(roomsBackupFile, 'utf8'));
+      console.warn('主房间数据损坏，已从备份恢复：', primaryError.message);
+    }
     for (const room of stored) {
       room.ledger ||= [];
       room.players.forEach((player) => { player.connected = false; player.ready = false; });
@@ -329,8 +477,20 @@ const cleanupTimer = setInterval(() => {
     const allOffline = room.players.every((player) => !player.connected);
     if (allOffline && room.updatedAt < cutoff) deleteRoom(room.code);
   }
+  for (const [key, bucket] of requestBuckets) {
+    if (Date.now() - bucket.startedAt > 10 * 60_000) requestBuckets.delete(key);
+  }
 }, 10 * 60 * 1000);
 cleanupTimer.unref?.();
 
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveRooms();
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 2_000).unref?.();
+  });
+}
+
 if (process.env.NODE_ENV !== 'test') server.listen(port, '0.0.0.0', () => console.log(`三张牌已启动：${baseUrl}`));
-export { app, server, rooms };
+export { app, FileSessionStore, server, rooms };

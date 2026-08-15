@@ -42,6 +42,8 @@ test('牌型顺序、A23和235特殊规则正确', () => {
   assert.equal(compareHands(hand([3, 2, 14]), hand([4, 3, 2])), -1);
   assert.equal(compareHandsWith235(hand([2, 3, 5]), hand([9, 9, 9])), 1);
   assert.equal(compareHandsWith235(hand([2, 3, 5]), hand([14, 14, 13])), -1);
+  assert.equal(compareHandsWith235(hand([2, 3, 5], ['♠', '♠', '♥']), hand([9, 9, 9])), 1, '两种花色的非同花235也应吃豹子');
+  assert.equal(compareHandsWith235(hand([2, 3, 5], ['♠', '♠', '♠']), hand([9, 9, 9])), -1, '同花235仍按金花计算');
 });
 
 test('房间最多十人，玩家准备后才能开局', () => {
@@ -243,6 +245,7 @@ test('最终比牌后牌面保留到玩家点击下一局', () => {
   assert.equal(room.status, 'waiting');
   assert.ok(room.reveal);
   assert.equal(room.reveal.expiresAt, null);
+  assert.equal(room.winner.reason, '比牌获胜');
 });
 
 test('正常情况下未看牌玩家只能收到隐藏牌面', () => {
@@ -315,6 +318,7 @@ test('托管跟注筹码不足时自动弃牌，掉线不会锁桌', () => {
   const current = room.players[room.turn];
   current.chips = 0;
   disconnectPlayer(room, current.id);
+  assert.ok(room.turnDeadline > Date.now() + 29_000, '掉线玩家每轮仍应有30秒');
   assert.equal(expireTurn(room, room.turnDeadline + 1), true);
   assert.equal(current.autoPlay, true);
   assert.equal(current.folded, true);
@@ -339,6 +343,24 @@ test('等待阶段真正离开并自动转让房主', () => {
   assert.equal(result.removed, true);
   assert.equal(room.players.some((item) => item.id === '1'), false);
   assert.equal(room.ownerId, '2');
+});
+
+test('借贷未结清时双方都不能退出房间', () => {
+  const room = fundedRoom();
+  const request = requestBorrow(room, '2', '1', 100);
+  reviewBorrowRequest(room, '1', request.id, true);
+  assert.throws(() => leavePlayer(room, '1'), /结清/);
+  assert.throws(() => leavePlayer(room, '2'), /结清/);
+  repayBorrow(room, '2', room.debts[0].id, 100);
+  assert.equal(leavePlayer(room, '2').removed, true);
+});
+
+test('实时房间状态不携带大体积流水和历史', () => {
+  const room = fundedRoom();
+  const view = publicRoom(room, '1');
+  assert.deepEqual(view.ledger, []);
+  assert.deepEqual(view.log, []);
+  assert.deepEqual(view.history, []);
 });
 
 test('牌局中退出按弃牌处理并完成结算', () => {

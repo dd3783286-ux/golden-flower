@@ -61,7 +61,23 @@ function makePlayer(player) {
   };
 }
 
-function touch(room) { room.updatedAt = now(); return room; }
+function touch(room) {
+  room.updatedAt = now();
+  if (room.log?.length > 500) room.log = room.log.slice(-500);
+  if (room.chipRequests?.length > 200) {
+    room.chipRequests = [
+      ...room.chipRequests.filter((request) => request.status === 'pending'),
+      ...room.chipRequests.filter((request) => request.status !== 'pending').slice(-180)
+    ].slice(-200);
+  }
+  if (room.borrowRequests?.length > 200) {
+    room.borrowRequests = [
+      ...room.borrowRequests.filter((request) => request.status?.startsWith('pending')),
+      ...room.borrowRequests.filter((request) => !request.status?.startsWith('pending')).slice(-180)
+    ].slice(-200);
+  }
+  return room;
+}
 
 function recordLedger(room, player, type, amount, note = '') {
   room.ledger ||= [];
@@ -382,7 +398,7 @@ export function showdown(room, playerId, targetId) {
     cost
   };
   room.log.push(`${player.name} 支付 ${cost} 与 ${target.name} 比牌，${winner.name} 获胜，${loser.name} 淘汰`);
-  settleOrAdvance(room, index);
+  settleOrAdvance(room, index, '比牌获胜');
   if (room.status === 'waiting') room.reveal.expiresAt = null;
   touch(room);
   return room.reveal;
@@ -436,7 +452,7 @@ export function disconnectPlayer(room, playerId) {
   if (room.status === 'playing' && !player.folded) {
     player.autoPlay = true;
     const index = room.players.findIndex((candidate) => candidate.id === playerId);
-    if (index === room.turn) room.turnDeadline = now() + TRUSTEE_DELAY_MS;
+    if (index === room.turn) room.turnDeadline = now() + TURN_MS;
   }
   player.lastSeenAt = now();
   room.log.push(`${player.name} 暂时离线`);
@@ -448,6 +464,12 @@ export function leavePlayer(room, playerId) {
   const index = room.players.findIndex((player) => player.id === playerId);
   if (index < 0) return { removed: false, closed: false };
   const player = room.players[index];
+  const unsettledDebt = room.debts?.some((debt) => debt.outstanding > 0 && (debt.borrowerId === playerId || debt.lenderId === playerId));
+  if (unsettledDebt) throw new Error('请先结清借入或借出的筹码后再退出房间');
+  room.chipRequests = (room.chipRequests || []).filter((request) => request.playerId !== playerId || request.status !== 'pending');
+  room.borrowRequests = (room.borrowRequests || []).filter((request) => (
+    request.borrowerId !== playerId && request.lenderId !== playerId
+  ) || !request.status?.startsWith('pending'));
   if (room.status === 'playing' && !player.folded) {
     player.folded = true;
     recordTableAction(room, player, 'fold');
@@ -503,19 +525,20 @@ function nextActiveIndex(room, from) {
   return -1;
 }
 
-function settleOrAdvance(room, from) {
+function settleOrAdvance(room, from, finishReason = '成为最后玩家') {
   const alive = room.players.filter((player) => !player.folded);
-  if (alive.length === 1) return finish(room, alive[0]);
+  if (alive.length === 1) return finish(room, alive[0], finishReason);
   room.turn = nextActiveIndex(room, from);
   setTurnDeadline(room);
 }
 
 function setTurnDeadline(room) {
   const player = room.players[room.turn];
-  room.turnDeadline = room.status === 'playing' && room.turn >= 0 ? now() + (player?.autoPlay ? TRUSTEE_DELAY_MS : TURN_MS) : null;
+  const fastTrustee = player?.autoPlay && player.connected !== false;
+  room.turnDeadline = room.status === 'playing' && room.turn >= 0 ? now() + (fastTrustee ? TRUSTEE_DELAY_MS : TURN_MS) : null;
 }
 
-function finish(room, winner) {
+function finish(room, winner, reason = '成为最后玩家') {
   const won = room.pot;
   winner.chips += won;
   recordLedger(room, winner, '赢得筹码池', won, `第 ${room.round} 局获胜`);
@@ -525,7 +548,7 @@ function finish(room, winner) {
     winnerId: winner.id,
     winnerName: winner.name,
     pot: won,
-    reason: winner.eliminatedByCompare ? '比牌获胜' : '成为最后玩家',
+    reason,
     handType: winner.hand.length === 3 ? evaluateHand(winner.hand).name : '',
     at: now(),
     players: room.players.map((player) => ({ id: player.id, name: player.name, bet: player.bet, chips: player.chips }))
@@ -562,6 +585,9 @@ export function publicRoom(room, viewerId) {
   } : null;
   return {
     ...room,
+    ledger: [],
+    log: [],
+    history: [],
     reveal: publicReveal,
     viewerId,
     ...comparison,
