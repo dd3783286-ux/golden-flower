@@ -553,7 +553,7 @@ setInterval(updateCountdown, 250);
 
 function cardHtml(card, extraClass = '', inlineStyle = '') {
   const className = `card ${card ? '' : 'back'} ${extraClass}`.trim();
-  const fileName = card ? cardAssetName(card) : 'blueBack.svg';
+  const fileName = card ? cardAssetName(card) : 'blueBack-v2.png';
   const label = card ? `${rank(card.rank)}${card.suit}` : '未看牌';
   const style = inlineStyle ? ` style="${esc(inlineStyle)}"` : '';
   return `<div class="${className}"${style}><img src="${CARD_ASSET_ROOT}/${fileName}" alt="${esc(label)}" draggable="false"></div>`;

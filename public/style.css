@@ -84,7 +84,7 @@
 .cards{height:90px}
 .mini-cards .card{width:40px;height:56px;border-radius:4px;box-shadow:0 5px 10px #0009}
 .mini-cards .card>img{border-radius:4px}
-.opponent-cards i{width:13px;height:20px;flex-basis:13px;border:0;background:#173867 url('/assets/cards/blueBack.svg') center/cover no-repeat;box-shadow:0 2px 5px #000b}
+.opponent-cards i{width:13px;height:20px;flex-basis:13px;border:0;background:#173867 url('/assets/cards-standard/blueBack-v2.png') center/cover no-repeat;box-shadow:0 2px 5px #000b}
 @media(max-width:430px){.card,.card.red,.card.black,.card.back{width:56px;height:78px}.cards{height:84px}.mini-cards .card{width:38px;height:53px}}
 
 /* Phone, tablet and Android adaptive table */
