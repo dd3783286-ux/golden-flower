@@ -47,7 +47,16 @@ const sessionMiddleware = session({
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '16kb' }));
 app.use(sessionMiddleware);
-app.use(express.static(path.join(dirname, '../public')));
+app.use(express.static(path.join(dirname, '../public'), {
+  // 临时测试阶段优先保证手机和微信浏览器每次都拿到最新界面资源。
+  etag: false,
+  lastModified: false,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+}));
 
 app.get('/api/me', (req, res) => res.json({
   user: req.session.user || null,
