@@ -4,6 +4,6 @@ node_modules/
 !.env.example
 data/
 *.log
+tools/cloudflared.exe
 .DS_Store
 Thumbs.db
-
