@@ -118,6 +118,51 @@ test('同一账号打开两个页面，关闭一个不会把另一个判为离�
   assert.equal(rooms.get(created.code).players[0].connected, true);
 });
 
+test('三名在线玩家通过确认完成明牌比牌且第三方看不到牌面', async (t) => {
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const names = ['甲', '乙', '丙'];
+  const cookies = await Promise.all(names.map((name) => login(origin, name)));
+  const states = {};
+  const clients = names.map((name, index) => connect(origin, cookies[index], (state) => { states[name] = state; }));
+  t.after(() => { clients.forEach((client) => client.disconnect()); rooms.clear(); server.close(); });
+  await Promise.all(clients.map((client) => new Promise((resolve) => client.on('connect', resolve))));
+  const socketByName = Object.fromEntries(names.map((name, index) => [name, clients[index]]));
+  const created = await emitAck(clients[0], 'create-room', {});
+  await emitAck(clients[1], 'join-room', { code: created.code });
+  await emitAck(clients[2], 'join-room', { code: created.code });
+  await waitUntil(() => states.甲?.players.length === 3);
+
+  for (const name of names) {
+    const request = await emitAck(socketByName[name], 'request-chips', { code: created.code, amount: 100 });
+    assert.equal((await emitAck(clients[0], 'review-chips', { code: created.code, requestId: request.id, approved: true })).ok, true);
+    assert.equal((await emitAck(socketByName[name], 'set-ready', { code: created.code, ready: true })).ok, true);
+  }
+  assert.equal((await emitAck(clients[0], 'start-game', { code: created.code })).ok, true);
+  await waitUntil(() => states.甲?.status === 'playing');
+  for (let index = 0; index < 3; index += 1) {
+    const currentName = states.甲.players[states.甲.turn].name;
+    await emitAck(socketByName[currentName], 'action', { code: created.code, action: 'see' });
+    await emitAck(socketByName[currentName], 'action', { code: created.code, action: 'call' });
+    await waitUntil(() => states.甲.players[states.甲.turn].name !== currentName);
+  }
+
+  const challengerName = states.甲.players[states.甲.turn].name;
+  const targetName = names.find((name) => name !== challengerName);
+  const thirdName = names.find((name) => ![challengerName, targetName].includes(name));
+  const targetId = states.甲.players.find((player) => player.name === targetName).id;
+  const request = await emitAck(socketByName[challengerName], 'action', { code: created.code, action: 'compare', targetId });
+  assert.equal(request.pending, true);
+  await waitUntil(() => states[targetName]?.pendingCompare?.id === request.requestId);
+  assert.equal(states[thirdName].pendingCompare.challengerName, undefined);
+  assert.equal((await emitAck(socketByName[targetName], 'review-compare', { code: created.code, requestId: request.requestId, approved: true })).ok, true);
+  await waitUntil(() => states.甲?.reveal?.id);
+  assert.equal(states[challengerName].reveal.cardsVisible, true);
+  assert.equal(states[targetName].reveal.cardsVisible, true);
+  assert.equal(states[thirdName].reveal.cardsVisible, false);
+  assert.equal(states.甲.players.filter((player) => !player.folded).length, 2);
+});
+
 test('安全响应头已启用', async (t) => {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;

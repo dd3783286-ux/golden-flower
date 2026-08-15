@@ -25,6 +25,7 @@ export function makeRoom(code, owner) {
     turnDeadline: null,
     special235: true,
     reveal: null,
+    pendingCompare: null,
     lastAction: null,
     winner: null,
     createdAt: now(),
@@ -295,6 +296,7 @@ export function startGame(room, requesterId, random = Math.random) {
   room.lastAction = null;
   room.winner = null;
   room.reveal = null;
+  room.pendingCompare = null;
   room.players.forEach((player, index) => {
     player.folded = !activeIndexes.includes(index);
     player.eliminatedByCompare = false;
@@ -320,6 +322,7 @@ export function startGame(room, requesterId, random = Math.random) {
 }
 
 export function act(room, playerId, action, raiseTo) {
+  if (room.pendingCompare) throw new Error('正在等待比牌确认');
   const { player, index } = currentPlayer(room, playerId);
   player.autoPlay = false;
   if (action === 'see') {
@@ -358,6 +361,7 @@ export function act(room, playerId, action, raiseTo) {
 }
 
 export function showdown(room, playerId, targetId) {
+  if (room.pendingCompare) throw new Error('已有待确认的比牌请求');
   const { player, index } = currentPlayer(room, playerId);
   player.autoPlay = false;
   if (!canCompare(room)) throw new Error('至少完成一轮下注后才能比牌');
@@ -369,6 +373,61 @@ export function showdown(room, playerId, targetId) {
   }
   // 比牌费只按发起者状态计算：闷牌1倍、明牌2倍，不因对手状态再次翻倍。
   const cost = comparisonCost(room, player, target);
+  if (player.chips < cost) throw new Error(`筹码不足，需要 ${cost}`);
+  const alive = room.players.filter((candidate) => !candidate.folded);
+  if (alive.length > 2 && player.seen && target.seen) {
+    const currentTime = now();
+    room.pendingCompare = {
+      id: requestId('compare'),
+      challengerId: player.id,
+      challengerName: player.name,
+      targetId: target.id,
+      targetName: target.name,
+      cost,
+      createdAt: currentTime,
+      expiresAt: currentTime + 10_000,
+      remainingTurnMs: Math.max(1_000, (room.turnDeadline || currentTime + TURN_MS) - currentTime)
+    };
+    room.turnDeadline = null;
+    room.log.push(`${player.name} 向 ${target.name} 发起比牌，等待对方确认`);
+    touch(room);
+    return { pending: true, requestId: room.pendingCompare.id };
+  }
+  return resolveShowdown(room, player, index, target, cost);
+}
+
+export function reviewComparison(room, reviewerId, requestIdValue, approved) {
+  const request = room.pendingCompare;
+  if (!request || request.id !== requestIdValue) throw new Error('比牌请求不存在或已处理');
+  if (request.targetId !== reviewerId) throw new Error('只有被比牌玩家可以确认');
+  const challenger = mustPlayer(room, request.challengerId);
+  const target = mustPlayer(room, request.targetId);
+  const challengerIndex = room.players.findIndex((candidate) => candidate.id === challenger.id);
+  if (challenger.folded || target.folded || challengerIndex !== room.turn) {
+    cancelPendingComparison(room, '牌局状态已变化');
+    throw new Error('比牌双方已不在有效牌局中');
+  }
+  room.pendingCompare = null;
+  if (!approved) {
+    room.turnDeadline = now() + Math.max(1_000, request.remainingTurnMs || TURN_MS);
+    room.log.push(`${target.name} 拒绝了 ${challenger.name} 的比牌请求`);
+    touch(room);
+    return { approved: false };
+  }
+  return resolveShowdown(room, challenger, challengerIndex, target, request.cost);
+}
+
+export function expireComparisonRequest(room, currentTime = now()) {
+  const request = room.pendingCompare;
+  if (!request || currentTime < request.expiresAt) return false;
+  room.pendingCompare = null;
+  room.turnDeadline = currentTime + Math.max(1_000, request.remainingTurnMs || TURN_MS);
+  room.log.push(`${request.targetName} 未在10秒内确认，${request.challengerName} 的比牌请求已取消`);
+  touch(room);
+  return true;
+}
+
+function resolveShowdown(room, player, index, target, cost) {
   payExact(player, cost);
   recordLedger(room, player, '比牌费用', -cost, `与 ${target.name} 比牌`);
   player.bet += cost;
@@ -411,6 +470,7 @@ export function canCompare(room) {
 function comparisonAvailability(room, playerId) {
   const player = room.players.find((candidate) => candidate.id === playerId);
   if (room.status !== 'playing' || !player || player.folded) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '不可比' };
+  if (room.pendingCompare) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '等待确认' };
   if (!canCompare(room)) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '首轮后' };
   const opponents = room.players.filter((candidate) => !candidate.folded && candidate.id !== playerId);
   const compareCosts = Object.fromEntries(opponents.map((candidate) => [candidate.id, comparisonCost(room, player, candidate)]));
@@ -420,6 +480,7 @@ function comparisonAvailability(room, playerId) {
 }
 
 export function expireTurn(room, currentTime = now()) {
+  if (room.pendingCompare) return false;
   if (room.status !== 'playing' || room.turn < 0 || !room.turnDeadline || currentTime < room.turnDeadline) return false;
   const player = room.players[room.turn];
   if (!player || player.folded) return false;
@@ -464,6 +525,9 @@ export function leavePlayer(room, playerId) {
   const index = room.players.findIndex((player) => player.id === playerId);
   if (index < 0) return { removed: false, closed: false };
   const player = room.players[index];
+  if (room.pendingCompare && [room.pendingCompare.challengerId, room.pendingCompare.targetId].includes(playerId)) {
+    cancelPendingComparison(room, '玩家离开');
+  }
   const unsettledDebt = room.debts?.some((debt) => debt.outstanding > 0 && (debt.borrowerId === playerId || debt.lenderId === playerId));
   if (unsettledDebt) throw new Error('请先结清借入或借出的筹码后再退出房间');
   room.chipRequests = (room.chipRequests || []).filter((request) => request.playerId !== playerId || request.status !== 'pending');
@@ -511,6 +575,14 @@ function payExact(player, amount) {
 
 function comparisonCost(room, player, target) {
   return room.currentBet * (player.seen ? 2 : 1);
+}
+
+function cancelPendingComparison(room, reason) {
+  const request = room.pendingCompare;
+  if (!request) return;
+  room.pendingCompare = null;
+  room.turnDeadline = now() + Math.max(1_000, request.remainingTurnMs || TURN_MS);
+  room.log.push(`${request.challengerName} 与 ${request.targetName} 的比牌请求已取消（${reason}）`);
 }
 
 function nextEligibleIndex(room, from, eligibleIndexes) {
@@ -565,6 +637,7 @@ function finish(room, winner, reason = '成为最后玩家') {
   room.pot = 0;
   room.turn = -1;
   room.turnDeadline = null;
+  room.pendingCompare = null;
   room.players.forEach((player) => { player.ready = false; player.autoPlay = false; });
   room.players = room.players.filter((player) => !player.leaveAfterRound);
   transferOwner(room);
@@ -587,12 +660,18 @@ export function publicRoom(room, viewerId) {
     targetHand: canSeeComparison ? room.reveal.targetHand : room.reveal.targetHand.map(() => null),
     targetType: canSeeComparison ? room.reveal.targetType : null
   } : null;
+  const compareParticipant = room.pendingCompare && [room.pendingCompare.challengerId, room.pendingCompare.targetId].includes(viewerId);
+  const publicPendingCompare = room.pendingCompare ? (compareParticipant ? room.pendingCompare : {
+    id: room.pendingCompare.id,
+    expiresAt: room.pendingCompare.expiresAt
+  }) : null;
   return {
     ...room,
     ledger: [],
     log: [],
     history: [],
     reveal: publicReveal,
+    pendingCompare: publicPendingCompare,
     viewerId,
     ...comparison,
     chipRequests: room.chipRequests.filter((request) => request.playerId === viewerId || room.ownerId === viewerId),

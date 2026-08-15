@@ -318,6 +318,24 @@ function renderActions(mine, turnPlayer) {
     return;
   }
 
+  const pendingCompare = room.pendingCompare;
+  if (pendingCompare) {
+    const seconds = Math.max(0, Math.ceil((pendingCompare.expiresAt - Date.now()) / 1000));
+    if (pendingCompare.targetId === viewerId()) {
+      $('#actions').innerHTML = `<div class="compare-consent"><div><b>${esc(pendingCompare.challengerName)} 向你发起比牌</b><small>对方支付 ${pendingCompare.cost}，仅你们双方看到牌面 · <span id="compareRequestSeconds">${seconds}</span>秒</small></div><button data-compare-review="0" class="danger">拒绝</button><button data-compare-review="1" class="primary">同意比牌</button></div>`;
+      $('#actions').querySelectorAll('[data-compare-review]').forEach((button) => button.onclick = () => emit('review-compare', {
+        code: room.code,
+        requestId: pendingCompare.id,
+        approved: button.dataset.compareReview === '1'
+      }));
+    } else if (pendingCompare.challengerId === viewerId()) {
+      $('#actions').innerHTML = `<div class="waiting-action">等待 ${esc(pendingCompare.targetName)} 确认比牌 · <span id="compareRequestSeconds">${seconds}</span>秒</div>`;
+    } else {
+      $('#actions').innerHTML = `<div class="waiting-action">两名玩家正在确认比牌 · <span id="compareRequestSeconds">${seconds}</span>秒</div>`;
+    }
+    return;
+  }
+
   const mineTurn = turnPlayer?.id === viewerId() && !mine?.folded;
   if (mine?.autoPlay) {
     $('#actions').innerHTML = '<div class="waiting-action">托管中，点击下方“取消托管”可恢复操作</div>';
@@ -372,7 +390,7 @@ function renderTrustee(mine) {
   const active = Boolean(mine?.autoPlay);
   button.textContent = active ? '取消托管' : '托管';
   button.classList.toggle('active', active);
-  button.disabled = room.status !== 'playing' || (!active && mine?.folded);
+  button.disabled = room.status !== 'playing' || Boolean(room.pendingCompare) || (!active && mine?.folded);
 }
 
 $('#trusteeButton').onclick = () => {
@@ -404,14 +422,16 @@ function showCompareTargets() {
   if (choices.length === 1) {
     const target = choices[0];
     const cost = costFor(target);
-    return confirmAction('确认比牌', `确定支付 ${cost} 与“${target.name}”比牌吗？牌面仅比牌双方可见。`, () => emit('action', { code: room.code, action: 'compare', targetId: target.id }));
+    const needsApproval = room.players.filter((player) => !player.folded).length > 2 && mine.seen && target.seen;
+    return confirmAction('确认比牌', `确定支付 ${cost} 与“${target.name}”比牌吗？${needsApproval ? '发起后需对方在10秒内同意。' : ''}牌面仅比牌双方可见。`, () => emit('action', { code: room.code, action: 'compare', targetId: target.id }));
   }
   showSheet(`<h3>选择比牌对手</h3><p class="meta">只有比牌双方能看到牌面，其他玩家只能看到胜负结果。</p>${choices.map((player) => { const cost = costFor(player); return `<button class="player-choice" data-target="${esc(player.id)}" ${mine.chips < cost ? 'disabled' : ''}><span class="avatar-small">${esc(player.name[0])}</span>${esc(player.name)} · 支付${cost}</button>`; }).join('')}`);
   $('#sheetContent').querySelectorAll('[data-target]').forEach((button) => button.onclick = () => {
     const target = room.players.find((player) => player.id === button.dataset.target);
     const cost = costFor(target);
+    const needsApproval = room.players.filter((player) => !player.folded).length > 2 && mine.seen && target?.seen;
     closeSheet();
-    confirmAction('确认比牌', `确定支付 ${cost} 与“${target?.name || '该玩家'}”比牌吗？牌面仅比牌双方可见。`, () => emit('action', { code: room.code, action: 'compare', targetId: button.dataset.target }));
+    confirmAction('确认比牌', `确定支付 ${cost} 与“${target?.name || '该玩家'}”比牌吗？${needsApproval ? '发起后需对方在10秒内同意。' : ''}牌面仅比牌双方可见。`, () => emit('action', { code: room.code, action: 'compare', targetId: button.dataset.target }));
   });
 }
 
@@ -539,7 +559,7 @@ function showLedger(selectedPlayer = 'all', records = recordCache || {}) {
 $('#rulesButton').onclick = showRules;
 $('#tableRulesButton').onclick = showRules;
 function showRules() {
-  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，第一局随机庄家，以后顺时针轮庄，庄家下家先操作。</li><li>闷牌按当前档位支付；看牌免费且不换人，看牌后下注为2倍。</li><li>加注档位：1、2、5、10、20、50、100、200、500。</li><li>完成第一轮下注后可以比牌。比牌费按发起者状态计算：闷牌支付当前档位，明牌支付当前档位2倍，不因对手状态再次翻倍。例如对方闷注1，明牌玩家主动比牌支付2。闷牌只有在剩两名玩家时才能主动比牌，双方都闷牌时任何一方都可以发起。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；玩家离线时，每轮仍保留30秒操作时间，筹码不足时自动弃牌。</li></ol>`);
+  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，第一局随机庄家，以后顺时针轮庄，庄家下家先操作。</li><li>闷牌按当前档位支付；看牌免费且不换人，看牌后下注为2倍。</li><li>加注档位：1、2、5、10、20、50、100、200、500。</li><li>完成第一轮下注后可以比牌。比牌费按发起者状态计算：闷牌支付当前档位，明牌支付当前档位2倍，不因对手状态再次翻倍。例如对方闷注1，明牌玩家主动比牌支付2。多人仍在局中且双方都已看牌时，被比牌者有10秒同意或拒绝；同意后才扣费并比牌，拒绝或超时不扣费，仍由发起者继续操作。闷牌只有在剩两名玩家时才能主动比牌，双方都闷牌时任何一方都可以发起。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；牌小者淘汰，牌大者留在桌上继续游戏；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；玩家离线时，每轮仍保留30秒操作时间，筹码不足时自动弃牌。</li></ol>`);
 }
 
 $('#leave').onclick = () => confirmAction('退出房间', room?.status === 'playing' ? '退出后将自动弃牌，并在本局结束后离开房间。' : '确定退出当前房间吗？', async () => {
@@ -624,6 +644,8 @@ function animateChip() {
 }
 
 function updateCountdown() {
+  const compareLabel = $('#compareRequestSeconds');
+  if (compareLabel && room?.pendingCompare?.expiresAt) compareLabel.textContent = Math.max(0, Math.ceil((room.pendingCompare.expiresAt - Date.now()) / 1000));
   const ring = $('#turnCountdown');
   if (!ring || !room?.turnDeadline) return;
   const remaining = Math.max(0, room.turnDeadline - Date.now());

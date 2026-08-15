@@ -6,6 +6,7 @@ import {
   addPlayer,
   BET_LEVELS,
   disconnectPlayer,
+  expireComparisonRequest,
   expireTurn,
   leavePlayer,
   makeRoom,
@@ -14,6 +15,7 @@ import {
   repayBorrow,
   requestBorrow,
   requestChips,
+  reviewComparison,
   reviewBorrowRequest,
   reviewChipRequest,
   setReady,
@@ -231,6 +233,57 @@ test('明牌玩家与明牌玩家比牌按明牌跟注额1比1支付', () => {
   assert.equal(reveal.cost, expectedCost);
   const compareEntry = room.ledger.findLast((entry) => entry.playerId === challenger.id && entry.type === '比牌费用');
   assert.equal(compareEntry.amount, -expectedCost);
+});
+
+test('多人明牌比牌需对方同意，拒绝或超时不扣费', () => {
+  const room = fundedRoom(500, 3);
+  startGame(room, '1', () => 0);
+  for (let index = 0; index < 3; index += 1) {
+    const current = room.players[room.turn];
+    act(room, current.id, 'see');
+    act(room, current.id, 'call');
+  }
+  const challenger = room.players[room.turn];
+  const target = room.players.find((player) => player.id !== challenger.id && !player.folded);
+  const third = room.players.find((player) => ![challenger.id, target.id].includes(player.id));
+  const before = challenger.chips;
+  const requested = showdown(room, challenger.id, target.id);
+  assert.equal(requested.pending, true);
+  assert.equal(room.turnDeadline, null, '等待确认期间暂停发起者倒计时');
+  assert.equal(challenger.chips, before, '发起时不预扣费用');
+  assert.equal(publicRoom(room, target.id).pendingCompare.challengerName, challenger.name);
+  assert.equal(publicRoom(room, third.id).pendingCompare.challengerName, undefined, '第三方看不到比牌双方信息');
+
+  reviewComparison(room, target.id, room.pendingCompare.id, false);
+  assert.equal(room.pendingCompare, null);
+  assert.equal(challenger.chips, before);
+  assert.equal(room.players[room.turn].id, challenger.id, '拒绝后仍由发起者操作');
+  assert.ok(room.turnDeadline > Date.now());
+
+  showdown(room, challenger.id, target.id);
+  assert.equal(expireComparisonRequest(room, room.pendingCompare.expiresAt + 1), true);
+  assert.equal(challenger.chips, before, '超时不扣费');
+  assert.equal(room.players[room.turn].id, challenger.id);
+});
+
+test('多人明牌比牌同意后才扣费并淘汰小牌玩家', () => {
+  const room = fundedRoom(500, 3);
+  startGame(room, '1', () => 0);
+  for (let index = 0; index < 3; index += 1) {
+    const current = room.players[room.turn];
+    act(room, current.id, 'see');
+    act(room, current.id, 'call');
+  }
+  const challenger = room.players[room.turn];
+  const target = room.players.find((player) => player.id !== challenger.id && !player.folded);
+  const before = challenger.chips;
+  showdown(room, challenger.id, target.id);
+  const reveal = reviewComparison(room, target.id, room.pendingCompare.id, true);
+  assert.equal(challenger.chips, before - room.currentBet * 2);
+  assert.equal(reveal.cost, room.currentBet * 2);
+  assert.equal(room.players.filter((player) => !player.folded).length, 2);
+  assert.equal(room.players.find((player) => player.id === reveal.loserId).folded, true);
+  assert.equal(room.players.find((player) => player.id === reveal.winnerId).folded, false);
 });
 
 test('最终比牌后牌面保留到玩家点击下一局', () => {

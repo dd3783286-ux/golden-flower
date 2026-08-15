@@ -11,6 +11,7 @@ import {
   act,
   addPlayer,
   disconnectPlayer,
+  expireComparisonRequest,
   expireTurn,
   leavePlayer,
   makeRoom,
@@ -18,6 +19,7 @@ import {
   repayBorrow,
   requestBorrow,
   requestChips,
+  reviewComparison,
   reviewBorrowRequest,
   reviewChipRequest,
   setReady,
@@ -302,6 +304,7 @@ io.on('connection', (socket) => {
   socket.on('repay-borrow', ({ code, debtId, amount }, reply) => mutate(reply, code, () => repayBorrow(mustRoom(code), user.id, debtId, Number(amount))));
   socket.on('start-game', ({ code }, reply) => mutate(reply, code, () => startGame(mustRoom(code), user.id)));
   socket.on('action', ({ code, action, targetId, raiseTo }, reply) => mutate(reply, code, () => action === 'compare' ? showdown(mustRoom(code), user.id, targetId) : act(mustRoom(code), user.id, action, raiseTo)));
+  socket.on('review-compare', ({ code, requestId, approved }, reply) => mutate(reply, code, () => reviewComparison(mustRoom(code), user.id, requestId, Boolean(approved))));
 
   socket.on('get-records', ({ code }, reply) => safe(reply, () => {
     const room = mustRoom(code);
@@ -402,13 +405,13 @@ function broadcast(room) {
 
 function scheduleRoom(room) {
   clearTimeout(roomTimers.get(room.code));
-  const deadlines = [room.turnDeadline, room.reveal?.expiresAt].filter(Boolean);
+  const deadlines = [room.turnDeadline, room.reveal?.expiresAt, room.pendingCompare?.expiresAt].filter(Boolean);
   if (!deadlines.length) return roomTimers.delete(room.code);
   const delay = Math.max(10, Math.min(...deadlines) - Date.now() + 20);
   const timer = setTimeout(() => {
     const current = rooms.get(room.code);
     if (!current) return;
-    let changed = expireTurn(current);
+    let changed = expireComparisonRequest(current) || expireTurn(current);
     if (current.reveal && current.reveal.expiresAt <= Date.now()) {
       current.reveal = null;
       changed = true;
@@ -460,6 +463,7 @@ function loadRooms() {
       room.ledger ||= [];
       room.players.forEach((player) => { player.connected = false; player.ready = false; });
       room.reveal = null;
+      room.pendingCompare = null;
       if (room.status === 'playing') {
         room.turnDeadline = Date.now() + 30_000;
       }
