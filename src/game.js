@@ -367,7 +367,7 @@ export function showdown(room, playerId, targetId) {
     const alive = room.players.filter((candidate) => !candidate.folded);
     if (alive.length !== 2) throw new Error('闷牌仅在牌局剩余两名玩家时可以比牌');
   }
-  // 先按发起者的正常跟注额计算：闷牌1倍、明牌2倍；明牌主动比闷牌再翻倍。
+  // 比牌费只按发起者状态计算：闷牌1倍、明牌2倍，不因对手状态再次翻倍。
   const cost = comparisonCost(room, player, target);
   payExact(player, cost);
   recordLedger(room, player, '比牌费用', -cost, `与 ${target.name} 比牌`);
@@ -510,8 +510,7 @@ function payExact(player, amount) {
 }
 
 function comparisonCost(room, player, target) {
-  const normalCall = room.currentBet * (player.seen ? 2 : 1);
-  return normalCall * (player.seen && !target.seen ? 2 : 1);
+  return room.currentBet * (player.seen ? 2 : 1);
 }
 
 function nextEligibleIndex(room, from, eligibleIndexes) {

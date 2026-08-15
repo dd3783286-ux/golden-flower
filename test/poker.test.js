@@ -198,7 +198,7 @@ test('剩两名玩家都闷牌时可以闷开并按1倍支付', () => {
   assert.equal(reveal.cost, expectedCost);
 });
 
-test('剩两人时明牌玩家可以看闷牌玩家并按明牌跟注额的2倍支付', () => {
+test('剩两人时明牌玩家可以比闷牌玩家并按当前档位2倍支付', () => {
   const room = fundedRoom(500, 2);
   startGame(room, '1', () => 0);
   act(room, room.players[room.turn].id, 'call');
@@ -208,7 +208,7 @@ test('剩两人时明牌玩家可以看闷牌玩家并按明牌跟注额的2倍�
   act(room, challenger.id, 'see');
   const view = publicRoom(room, challenger.id);
   assert.equal(view.canCompare, true);
-  const expectedCost = room.currentBet * 4;
+  const expectedCost = room.currentBet * 2;
   const reveal = showdown(room, challenger.id, target.id);
   assert.equal(reveal.cost, expectedCost);
 });

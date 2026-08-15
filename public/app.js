@@ -50,8 +50,7 @@ function showScreen(selector) {
 
 function viewerId() { return room?.viewerId || me?.id; }
 function localCompareCost(player, target) {
-  const normalCall = room.currentBet * (player?.seen ? 2 : 1);
-  return normalCall * (player?.seen && !target?.seen ? 2 : 1);
+  return room.currentBet * (player?.seen ? 2 : 1);
 }
 
 function resetRoomVisualState() {
@@ -540,7 +539,7 @@ function showLedger(selectedPlayer = 'all', records = recordCache || {}) {
 $('#rulesButton').onclick = showRules;
 $('#tableRulesButton').onclick = showRules;
 function showRules() {
-  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，第一局随机庄家，以后顺时针轮庄，庄家下家先操作。</li><li>闷牌按当前档位支付；看牌免费且不换人，看牌后下注为2倍。</li><li>加注档位：1、2、5、10、20、50、100、200、500。</li><li>完成第一轮下注后可以比牌。明牌比明牌按明牌正常跟注额1:1支付；明牌主动比闷牌在明牌跟注额上按1:2支付；闷牌主动比牌按闷牌正常跟注额支付。闷牌只有在剩两名玩家时才能主动比牌，双方都闷牌时任何一方都可以发起。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；玩家离线时，每轮仍保留30秒操作时间，筹码不足时自动弃牌。</li></ol>`);
+  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，第一局随机庄家，以后顺时针轮庄，庄家下家先操作。</li><li>闷牌按当前档位支付；看牌免费且不换人，看牌后下注为2倍。</li><li>加注档位：1、2、5、10、20、50、100、200、500。</li><li>完成第一轮下注后可以比牌。比牌费按发起者状态计算：闷牌支付当前档位，明牌支付当前档位2倍，不因对手状态再次翻倍。例如对方闷注1，明牌玩家主动比牌支付2。闷牌只有在剩两名玩家时才能主动比牌，双方都闷牌时任何一方都可以发起。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；玩家离线时，每轮仍保留30秒操作时间，筹码不足时自动弃牌。</li></ol>`);
 }
 
 $('#leave').onclick = () => confirmAction('退出房间', room?.status === 'playing' ? '退出后将自动弃牌，并在本局结束后离开房间。' : '确定退出当前房间吗？', async () => {
