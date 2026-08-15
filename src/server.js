@@ -36,6 +36,7 @@ const baseUrl = process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || `http
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataFile = path.join(dirname, '../data/rooms.json');
 const production = process.env.NODE_ENV === 'production';
+const cachedAssetExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.woff', '.woff2']);
 
 const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || 'dev-only-secret',
@@ -48,10 +49,14 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '16kb' }));
 app.use(sessionMiddleware);
 app.use(express.static(path.join(dirname, '../public'), {
-  // 临时测试阶段优先保证手机和微信浏览器每次都拿到最新界面资源。
+  // 页面代码保持实时更新；图片和字体缓存一天，避免每次操作重复下载牌面资源。
   etag: false,
   lastModified: false,
-  setHeaders: (res) => {
+  setHeaders: (res, filePath) => {
+    if (cachedAssetExtensions.has(path.extname(filePath).toLowerCase())) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return;
+    }
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
