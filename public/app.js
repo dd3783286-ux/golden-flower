@@ -117,6 +117,7 @@ const SOUNDS = {
   tap: () => { tone(1400, 0.028, 'square', 0.045); }
 };
 let soundMuted = false;
+let voiceMuted = false;
 function playSound(name) {
   if (soundMuted) return; // 音效开关:关闭后只保留人声(TTS)
   try { SOUNDS[name]?.(); } catch { /* 忽略 */ }
@@ -181,6 +182,7 @@ const VOICE_CLIPS = [
 const voiceClipCache = {};
 
 function speak(text) {
+  if (voiceMuted) return; // 人声开关
   try {
     // 优先播放真人女声片段
     for (const [key, src] of VOICE_CLIPS) {
@@ -406,6 +408,14 @@ $('#muteButton').onclick = () => {
   soundMuted = !soundMuted;
   $('#muteButton').classList.toggle('muted', soundMuted);
   toast(soundMuted ? '合成音效已关闭(人声保留)' : '合成音效已开启');
+};
+
+// 人声开关:关闭真人女声与语音播报
+$('#voiceButton').onclick = () => {
+  voiceMuted = !voiceMuted;
+  $('#voiceButton').classList.toggle('muted', voiceMuted);
+  if (voiceMuted) window.speechSynthesis?.cancel();
+  toast(voiceMuted ? '人声已关闭(音效保留)' : '人声已开启');
 };
 
 $('#logout').onclick = () => confirmAction('切换账号', '将退出当前登录账号，确定继续吗？', async () => {
