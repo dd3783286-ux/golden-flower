@@ -508,7 +508,7 @@ function loadRooms() {
 }
 
 const cleanupTimer = setInterval(() => {
-  const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+  const cutoff = Date.now() - 30 * 60 * 1000;
   for (const room of rooms.values()) {
     const allOffline = room.players.every((player) => !player.connected);
     if (allOffline && room.updatedAt < cutoff) deleteRoom(room.code);
@@ -540,7 +540,7 @@ chipAutoTimer.unref?.();
 
 // 真人离线自动清理:非机器人玩家离线超过30秒自动移出房间(牌局中则自动弃牌,本局结束移除)
 const offlineKickTimer = setInterval(() => {
-  const cutoff = Date.now() - 30_000;
+  const cutoff = Date.now() - 15_000;
   for (const room of rooms.values()) {
     const kickIds = room.players
       .filter((player) => !player.bot && !player.connected && (player.lastSeenAt || 0) <= cutoff)
