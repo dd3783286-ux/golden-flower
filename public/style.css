@@ -622,3 +622,18 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .utility-bar button.active{color:#ffe081;border-color:#f5cb5d77;background:#3a2c0ecc}
 .utility-bar button .badge{position:absolute;top:3px;right:6px;min-width:14px;height:14px;font-size:9px}
 @media(max-width:430px){.utility-bar button{font-size:10px}}
+
+/* ===== 左侧底注信息:调大+美化 ===== */
+.bet-info{
+  font-size:12px;
+  padding:7px 11px;
+  gap:4px;
+  line-height:1.35;
+  border-radius:11px;
+  background:#0c2a24e6;
+  border:1px solid #f5cb5d40;
+  color:#cfe0da;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 2px 6px rgba(0,0,0,.3)
+}
+.bet-info b{color:#ffe081;font-weight:800;font-size:13px;margin-left:1px}
+.bet-info span{display:block;white-space:nowrap}
