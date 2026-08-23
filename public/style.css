@@ -668,3 +668,10 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
   box-shadow:inset 0 1px 0 rgba(255,255,255,.08)
 }
 #lobby .text-button:active,#login .text-button:active{transform:scale(.95)}
+
+/* ===== 顶部标题重排:信息一行+三张牌居中下一行 ===== */
+.app-header{flex-direction:column;align-items:center;text-align:center;gap:2px;min-height:0}
+.header-top{display:flex;justify-content:space-between;align-items:center;width:100%}
+.header-top small{font-size:11px;color:#8fb2aa}
+.user-area{gap:8px}
+.app-header h1{font-size:22px;margin:2px 0 4px;letter-spacing:2px}
