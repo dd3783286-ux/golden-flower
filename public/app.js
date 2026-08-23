@@ -68,7 +68,7 @@ function ensureAudio() {
 }
 function tone(freq, dur, type = 'sine', vol = 0.12, when = 0) {
   const ctx = ensureAudio();
-  if (!ctx) return;
+  if (!ctx || ctx.state !== 'running') return; // 挂起中不播,等下次手势恢复
   try {
     const t = ctx.currentTime + when;
     const osc = ctx.createOscillator();
@@ -139,6 +139,18 @@ const unlockAudio = () => {
 document.addEventListener('pointerdown', unlockAudio, { once: true });
 document.addEventListener('touchstart', unlockAudio, { once: true });
 document.addEventListener('click', unlockAudio, { once: true });
+// 每次用户手势都尝试恢复音频:iOS 会不定期挂起 AudioContext(切后台/长时间无操作),
+// 且只有用户手势能 resume——这是"音效一会有一会没有"的根因
+const resumeAudioOnGesture = () => {
+  try {
+    const ctx = ensureAudio();
+    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+    window.speechSynthesis?.resume?.();
+  } catch { /* 忽略 */ }
+};
+document.addEventListener('pointerdown', resumeAudioOnGesture);
+document.addEventListener('touchstart', resumeAudioOnGesture);
+document.addEventListener('click', resumeAudioOnGesture);
 
 // ---- 人声播报(TTS,关键节点) ----
 // 优先选择年轻女性中文语音;iOS 中文女声:月/婷婷/美嘉/善怡等,排除英文女声名(Flo/Sandy 等合中文像英文口音)
@@ -373,8 +385,24 @@ function connect() {
       speak('筹码已到账');
     }
     lastMyChips = mineNow?.chips ?? lastMyChips;
+    scheduleRender(animationAmount);
+  });
+}
+
+// 渲染合并:连续广播(机器人连招/多人操作)合并为每帧一次全量渲染,减轻手机渲染压力
+let renderScheduled = false;
+let pendingAnimationAmount = 0;
+function scheduleRender(animationAmount = 0) {
+  if (animationAmount) pendingAnimationAmount = animationAmount;
+  if (renderScheduled) return;
+  renderScheduled = true;
+  requestAnimationFrame(() => {
+    renderScheduled = false;
     render();
-    if (animationAmount > 0) animateChip(animationAmount);
+    if (pendingAnimationAmount > 0) {
+      animateChip(pendingAnimationAmount);
+      pendingAnimationAmount = 0;
+    }
   });
 }
 
@@ -1082,9 +1110,17 @@ document.addEventListener('click', (event) => {
   });
 });
 
-$('#leave').onclick = () => confirmAction('退出房间', room?.status === 'playing' ? '退出后将自动弃牌，并在本局结束后离开房间。' : '确定退出当前房间吗？', async () => {  const response = await fetch('/api/leave-room', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: room.code }) });
-  const data = await response.json();
-  if (!response.ok) return toast(data.error || '退出失败，请重试');
+$('#leave').onclick = () => confirmAction('退出房间', room?.status === 'playing' ? '退出后将自动弃牌，并在本局结束后离开房间。' : '确定退出当前房间吗？', async () => {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000); // 免费实例休眠唤醒可能较慢,20秒超时
+    const response = await fetch('/api/leave-room', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: room.code }), signal: controller.signal });
+    clearTimeout(timer);
+    const data = await response.json();
+    if (!response.ok) return toast(data.error || '退出失败，请重试');
+  } catch {
+    return toast('网络较慢，请稍后再试');
+  }
   room = null;
   resetRoomVisualState();
   history.replaceState(null, '', '/');
@@ -1145,7 +1181,17 @@ function confirmAction(title, text, onConfirm) {
   $('#confirmTitle').textContent = title;
   $('#confirmText').textContent = text;
   $('#confirmOverlay').classList.remove('hidden');
-  $('#confirmOk').onclick = () => { $('#confirmOverlay').classList.add('hidden'); onConfirm(); };
+  // 防重复:点击确定后禁用并提示处理中,避免"点三次没反应"重复提交
+  const ok = $('#confirmOk');
+  ok.disabled = false;
+  ok.textContent = '确定';
+  ok.onclick = () => {
+    if (ok.disabled) return;
+    ok.disabled = true;
+    ok.textContent = '处理中...';
+    $('#confirmOverlay').classList.add('hidden');
+    onConfirm();
+  };
 }
 $('#confirmCancel').onclick = () => $('#confirmOverlay').classList.add('hidden');
 $('#closeResult').onclick = () => $('#resultOverlay').classList.add('hidden');
