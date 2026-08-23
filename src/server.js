@@ -276,11 +276,19 @@ io.on('connection', (socket) => {
     next();
   });
 
-  socket.on('create-room', (_ = {}, reply) => safe(reply, () => {
+  socket.on('create-room', ({ isPublic = true } = {}, reply) => safe(reply, () => {
+    // 一人一房:已有自己创建的房间则直接进入,不重复创建
+    const existing = [...rooms.values()].find((r) => r.ownerId === user.id);
+    if (existing) {
+      leaveOtherRoom(socket, user.id, existing.code);
+      joinSocket(socket, existing, user);
+      return { code: existing.code, reused: true };
+    }
     leaveOtherRoom(socket, user.id);
     let code;
     do code = String(Math.floor(100000 + Math.random() * 900000)); while (rooms.has(code));
     const room = makeRoom(code, user);
+    room.isPublic = Boolean(isPublic);
     rooms.set(code, room);
     joinSocket(socket, room, user);
     return { code };

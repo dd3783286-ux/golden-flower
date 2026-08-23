@@ -13,6 +13,7 @@ export function makeRoom(code, owner) {
   return {
     code,
     ownerId: owner.id,
+    isPublic: true,
     status: 'waiting',
     baseBet: 1,
     currentBet: 1,

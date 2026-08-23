@@ -423,11 +423,21 @@ $('#logout').onclick = () => confirmAction('切换账号', '将退出当前登�
   location.href = '/';
 });
 
-$('#create').onclick = () => emit('create-room', {}, (response) => {
-  resetRoomVisualState();
-  history.replaceState(null, '', `/?room=${response.code}`);
-  showScreen('#table');
-});
+$('#create').onclick = () => {
+  showSheet('<h3>创建房间</h3><p class="meta">选择房间类型</p>'
+    + '<button data-room-type="1" class="player-choice"><span class="avatar-small">🌐</span>公开房间<small>出现在大厅,任何人都能加入</small></button>'
+    + '<button data-room-type="0" class="player-choice"><span class="avatar-small">🔒</span>私密房间<small>仅凭房间号/邀请链接加入</small></button>');
+  $('#sheetContent').querySelectorAll('[data-room-type]').forEach((button) => button.onclick = () => {
+    const isPublic = button.dataset.roomType === '1';
+    closeSheet();
+    emit('create-room', { isPublic }, (response) => {
+      if (response?.reused) toast('你已有一个房间,直接进入');
+      resetRoomVisualState();
+      history.replaceState(null, '', `/?room=${response.code}`);
+      showScreen('#table');
+    });
+  });
+};
 $('#joinForm').onsubmit = (event) => {
   event.preventDefault();
   const code = $('#roomCode').value.trim();
