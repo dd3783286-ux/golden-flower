@@ -183,7 +183,9 @@ const VOICE_CLIPS = [
   ['弃牌', 'sounds/qipai.mp3']
 ];
 const voiceClipCache = {};
-// 人声节流:350ms 内只播一条,防止机器人连招时多条语音互相打断(手机发热/声音丢失主因)
+// 人声去重:同一条文案 600ms 内不重复播(防机器人连招"跟注跟注跟注"刷屏);
+// 不同文案直接播,不再用时间窗丢弃(修复"有时有声音有时没有"——原来是连续播报被吞)
+let lastSpeakText = '';
 let lastSpeakAt = 0;
 function playVoiceClip(src) {
   if (!voiceClipCache[src]) voiceClipCache[src] = new Audio(src);
@@ -198,7 +200,8 @@ function playVoiceClip(src) {
 function speak(text) {
   if (voiceMuted) return; // 人声开关
   const now = Date.now();
-  if (now - lastSpeakAt < 350) return; // 节流:合并快速连续播报
+  if (text === lastSpeakText && now - lastSpeakAt < 600) return; // 同文案去重
+  lastSpeakText = text;
   lastSpeakAt = now;
   try {
     // 优先播放真人女声片段

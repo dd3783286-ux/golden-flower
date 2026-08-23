@@ -334,6 +334,7 @@ export function act(room, playerId, action, raiseTo) {
   if (action === 'see') {
     if (player.seen) throw new Error('已经看过牌');
     player.seen = true;
+    recordTableAction(room, player, 'see');
     room.log.push(`${player.name} 看牌`);
     touch(room);
     return;
