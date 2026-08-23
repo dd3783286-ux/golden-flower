@@ -18,5 +18,8 @@
   "devDependencies": {
     "socket.io-client": "^4.8.1",
     "wrangler": "^4.123.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
