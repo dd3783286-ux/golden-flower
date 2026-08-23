@@ -400,7 +400,6 @@ const testSoundHandler = () => {
 };
 $('#testSound').onclick = testSoundHandler;
 $('#testSoundLobby').onclick = testSoundHandler;
-$('#testSoundInGame').onclick = testSoundHandler;
 $('#testSoundBar').onclick = testSoundHandler;
 
 // 音效开关:关掉合成音效,保留人声

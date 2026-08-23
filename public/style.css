@@ -566,6 +566,6 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 }
 
 /* ===== 人声开关按钮(底部工具条6列) ===== */
-.utility-bar{grid-template-columns:repeat(6,1fr)}
+.utility-bar{grid-template-columns:repeat(5,1fr)}
 .utility-bar button#voiceButton.muted{color:#8a9b96;text-decoration:line-through;opacity:.6}
 @media(max-width:430px){.utility-bar button#voiceButton{font-size:10px}}
