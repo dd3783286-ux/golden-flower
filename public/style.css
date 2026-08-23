@@ -680,3 +680,6 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .header-top small{font-size:11px;letter-spacing:.5px;color:#8fb2aa;line-height:1.2}
 .user-area{gap:8px;align-items:center;min-height:22px}
 .app-header h1{font-size:22px;margin:24px 0 4px;letter-spacing:2px}
+
+/* ===== 顶部昵称醒目显示 ===== */
+.user-area b{font-weight:800;color:#ffe081;white-space:nowrap;max-width:96px;overflow:hidden;text-overflow:ellipsis}
