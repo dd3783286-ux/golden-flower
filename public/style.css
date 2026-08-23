@@ -569,3 +569,24 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .utility-bar{grid-template-columns:repeat(5,1fr)}
 .utility-bar button#voiceButton.muted{color:#8a9b96;text-decoration:line-through;opacity:.6}
 @media(max-width:430px){.utility-bar button#voiceButton{font-size:10px}}
+
+/* ===== 顶部栏按钮美化:胶囊按钮+颜色区分 ===== */
+.room-bar .icon-button,.room-bar .room-sub-button{
+  background:#0c2a24cc;
+  border:1px solid #2f655a;
+  border-radius:9px;
+  color:#d7e9e4;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 1px 3px rgba(0,0,0,.3);
+  transition:transform .08s ease,filter .08s ease
+}
+.room-bar .icon-button:active,.room-bar .room-sub-button:active{transform:scale(.93)}
+/* 退出:红色 */
+.room-bar #leave{color:#ffb3b7;border-color:#a04a52;background:#3d1a1ecc}
+/* 邀请:金色主按钮 */
+.room-bar #invite{color:#ffe081;border-color:#f5cb5d88;background:#3a2c0ecc}
+/* 改名:青色 */
+.room-bar #switchName{color:#a8cfc6}
+/* ♪/🔊 金色调 */
+.room-bar #muteButton,.room-bar #testSoundBar{color:#ffe081}
+/* 房主名:金色小徽章 */
+.owner-name{background:#0c2a24cc;border:1px solid #f5cb5d44;border-radius:9px;padding:2px 8px;color:#ffe081;font-weight:700;box-shadow:inset 0 1px 0 rgba(255,255,255,.07)}
