@@ -407,7 +407,7 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .turn-ring{position:absolute;inset:5px;border-radius:50%;pointer-events:none;z-index:1;transition:opacity .25s}
 .turn-ring svg{width:100%;height:100%;display:block;transform:rotate(-90deg)}
 .turn-ring .turn-ring-track{fill:none;stroke:#ffffff14;stroke-width:2.5}
-.turn-ring .turn-ring-bar{fill:none;stroke:#ff5258;stroke-width:2.5;stroke-linecap:round;stroke-dasharray:295.31;stroke-dashoffset:295.31;transition:stroke-dashoffset .3s linear,stroke .3s}
+.turn-ring .turn-ring-bar{fill:none;stroke:#ff5258;stroke-width:2.5;stroke-linecap:round;stroke-dasharray:295.31;stroke-dashoffset:295.31;transition:stroke-dashoffset 1s linear,stroke .3s}
 .turn-ring.hidden{opacity:0}
 
 /* 最后10秒:筹码池中央大号倒计时数字 */

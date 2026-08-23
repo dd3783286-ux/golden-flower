@@ -182,7 +182,7 @@ app.get('/api/me', (req, res) => res.json({
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // 前端版本号:每次发布时更新(与 index.html 的 ?v= 同步),供"新版本提示"检测
-const APP_VERSION = '20260823rb';
+const APP_VERSION = '20260824a';
 app.get('/api/version', (_req, res) => res.json({ version: APP_VERSION }));
 
 app.post('/api/dev-login', limitSensitiveRequests, (req, res) => {
@@ -507,6 +507,9 @@ function runBotTurn(code, botIdValue) {
   if (!bot || room.status !== 'playing' || bot.folded) return;
   if (room.pendingCompare) return; // 等待对方确认比牌
   if (room.players[room.turn]?.id !== botIdValue) return; // 已轮到别人
+  // 筹码不足当前跟注额时,先自动补筹码,避免行动失败拖到30秒超时
+  const need = room.currentBet * (bot.seen ? 2 : 1);
+  if (bot.chips < need) ensureBotChips(room, bot);
   try {
     console.log(`[bot] ${bot.name} 行动(档位${room.currentBet},${bot.seen ? '明' : '闷'},筹码${bot.chips})`);
     decideBot(room, bot);
@@ -521,29 +524,42 @@ function runBotTurn(code, botIdValue) {
   }
 }
 
-// 机器人决策(移植自外部陪玩脚本 gf-bot.mjs 的随机稳健策略)
+// 机器人筹码不足时自动补筹码(低于50即补500),不用真人房主审批
+function ensureBotChips(room, bot) {
+  if (bot.chips >= 50 || bot.leaveAfterRound) return;
+  try {
+    let pending = (room.chipRequests || []).find((request) => request.playerId === bot.id && request.status === 'pending');
+    if (!pending) requestChips(room, bot.id, 500);
+    pending = (room.chipRequests || []).find((request) => request.playerId === bot.id && request.status === 'pending');
+    if (pending) reviewChipRequest(room, room.ownerId, pending.id, true);
+  } catch { /* 忽略单房间异常 */ }
+}
+
+// 机器人决策(移植自外部陪玩脚本 gf-bot.mjs,偏稳健但不像以前那么怂)
 function decideBot(room, bot) {
   const { canCompare, compareTargetIds } = comparisonAvailability(room, bot.id);
   const active = room.players.filter((player) => !player.folded);
   const tooRich = bot.seen ? room.currentBet * 2 : room.currentBet;
   const richRand = Math.random();
-  // 筹码很少时保守
-  if (bot.chips < 15 && richRand < 0.5) return act(room, bot.id, 'fold');
-  // 档位越高越倾向弃牌
-  if (tooRich >= 30 && richRand < 0.25) return act(room, bot.id, 'fold');
-  if (tooRich >= 60 && richRand < 0.45) return act(room, bot.id, 'fold');
-  if (tooRich >= 100 && richRand < 0.7) return act(room, bot.id, 'fold');
+  // 筹码极少才弃(阈值放宽,不再轻易放弃)
+  if (bot.chips < 10 && richRand < 0.35) return act(room, bot.id, 'fold');
+  // 档位越高越倾向弃牌(概率大幅下调:闷100也不会动不动就弃)
+  if (tooRich >= 500 && richRand < 0.75) return act(room, bot.id, 'fold');
+  if (tooRich >= 200 && richRand < 0.5) return act(room, bot.id, 'fold');
+  if (tooRich >= 100 && richRand < 0.3) return act(room, bot.id, 'fold');
+  if (tooRich >= 60 && richRand < 0.16) return act(room, bot.id, 'fold');
+  if (tooRich >= 30 && richRand < 0.08) return act(room, bot.id, 'fold');
   const rand = Math.random();
-  if (!bot.seen && rand < 0.55) {
+  if (!bot.seen && rand < 0.5) {
     // 看牌:看牌后仍是自己回合,广播后会被再次调度补跟注
     return act(room, bot.id, 'see');
   }
-  if (bot.seen && rand > 0.85 && canCompare && compareTargetIds.length) {
+  if (bot.seen && rand > 0.82 && canCompare && compareTargetIds.length) {
     const targetId = compareTargetIds[Math.floor(Math.random() * compareTargetIds.length)];
     return showdown(room, bot.id, targetId);
   }
-  if (rand > 0.93 && room.actionsInHand >= active.length * 3) return act(room, bot.id, 'fold');
-  if (rand > 0.78 && room.currentBet < 50) {
+  if (rand > 0.92 && room.actionsInHand >= active.length * 4) return act(room, bot.id, 'fold');
+  if (rand > 0.72 && room.currentBet < 100) {
     const nextLevel = BET_LEVELS.find((level) => level > room.currentBet);
     if (nextLevel && bot.chips >= nextLevel * (bot.seen ? 2 : 1)) return act(room, bot.id, 'raise', nextLevel);
   }
@@ -658,23 +674,31 @@ const cleanupTimer = setInterval(() => {
 }, 10 * 60 * 1000);
 cleanupTimer.unref?.();
 
-// 等待阶段自动补筹码:只对机器人(bot)生效,真人必须走房主审批
+// 机器人自动补筹码:等待阶段补到能准备,牌局中低于50也自动补(真人必须走房主审批)
 const chipAutoTimer = setInterval(() => {
   for (const room of rooms.values()) {
-    if (room.status !== 'waiting') continue;
     for (const player of room.players) {
       if (!player.bot) continue; // 真人:筹码申请必须经房主批准
       if (player.leaveAfterRound) continue;
       try {
-        if (player.chips < room.baseBet) {
-          const pending = (room.chipRequests || []).find((request) => request.playerId === player.id && request.status === 'pending');
-          if (!pending) requestChips(room, player.id, 500);
-          const latest = (room.chipRequests || []).find((request) => request.playerId === player.id && request.status === 'pending');
-          if (latest) reviewChipRequest(room, room.ownerId, latest.id, true);
+        let changed = false;
+        if (room.status === 'waiting') {
+          if (player.chips < room.baseBet) {
+            const pending = (room.chipRequests || []).find((request) => request.playerId === player.id && request.status === 'pending');
+            if (!pending) requestChips(room, player.id, 500);
+            const latest = (room.chipRequests || []).find((request) => request.playerId === player.id && request.status === 'pending');
+            if (latest) reviewChipRequest(room, room.ownerId, latest.id, true);
+            changed = true;
+          }
+          // 机器人筹码足够后自动准备,房主可直接开局
+          if (player.chips >= room.baseBet && !player.ready) { setReady(room, player.id, true); changed = true; }
+        } else if (room.status === 'playing' && player.chips < 50) {
+          // 牌局中筹码不足50自动补,避免机器人"没钱+等30秒超时"的窘境
+          const before = player.chips;
+          ensureBotChips(room, player);
+          if (player.chips !== before) changed = true;
         }
-        // 机器人筹码足够后自动准备,房主可直接开局
-        if (player.chips >= room.baseBet && !player.ready) setReady(room, player.id, true);
-        broadcast(room);
+        if (changed) broadcast(room);
       } catch { /* 忽略单房间异常 */ }
     }
   }

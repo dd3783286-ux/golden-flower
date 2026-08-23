@@ -87,6 +87,7 @@ const SOUNDS = {
   chip: () => { tone(560, 0.045, 'sine', 0.1); tone(780, 0.06, 'sine', 0.08, 0.045); },
   compare: () => { tone(190, 0.2, 'sawtooth', 0.09); tone(125, 0.28, 'sawtooth', 0.07, 0.09); },
   fold: () => { tone(220, 0.12, 'triangle', 0.1); tone(150, 0.16, 'triangle', 0.08, 0.09); },
+  see: () => { tone(430, 0.04, 'triangle', 0.1); tone(640, 0.05, 'triangle', 0.08, 0.04); },
   win: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.16, 'triangle', 0.11, i * 0.12)); },
   toast: () => { tone(880, 0.09, 'sine', 0.14); tone(1320, 0.12, 'sine', 0.1, 0.06); },
   // 开局洗牌声:白噪声低通,模拟唰唰唰
@@ -177,19 +178,33 @@ const VOICE_CLIPS = [
   ['筹码已到账', 'sounds/chip.mp3'],
   ['跟注', 'sounds/genzhu.mp3'],
   ['加注', 'sounds/jiazhu.mp3'],
-  ['比牌', 'sounds/bipai.mp3']
+  ['比牌', 'sounds/bipai.mp3'],
+  ['看牌', 'sounds/kanpai.mp3'],
+  ['弃牌', 'sounds/qipai.mp3']
 ];
 const voiceClipCache = {};
+// 人声节流:350ms 内只播一条,防止机器人连招时多条语音互相打断(手机发热/声音丢失主因)
+let lastSpeakAt = 0;
+function playVoiceClip(src) {
+  if (!voiceClipCache[src]) voiceClipCache[src] = new Audio(src);
+  // 用独立克隆实例播放,避免同一 Audio 对象快速连续 play 被中断
+  try {
+    const player = voiceClipCache[src].cloneNode(true);
+    player.volume = 1;
+    player.play().catch(() => { /* 忽略 */ });
+  } catch { /* 忽略 */ }
+}
 
 function speak(text) {
   if (voiceMuted) return; // 人声开关
+  const now = Date.now();
+  if (now - lastSpeakAt < 350) return; // 节流:合并快速连续播报
+  lastSpeakAt = now;
   try {
     // 优先播放真人女声片段
     for (const [key, src] of VOICE_CLIPS) {
       if (text.includes(key)) {
-        if (!voiceClipCache[src]) voiceClipCache[src] = new Audio(src);
-        voiceClipCache[src].currentTime = 0;
-        voiceClipCache[src].play().catch(() => { /* 忽略 */ });
+        playVoiceClip(src);
         return;
       }
     }
@@ -482,8 +497,10 @@ function renderTableAction() {
   if (action.type === 'call') { playSound('chip'); speak('跟注'); }
   else if (action.type === 'raise') { playSound('chip'); speak('加注'); }
   else if (action.type === 'compare') { playSound('compare'); speak('比牌'); }
+  else if (action.type === 'see') { playSound('see'); speak('看牌'); }
   else if (action.type === 'fold') {
     playSound('fold');
+    speak('弃牌');
     toast(`🃏 ${action.playerName} 弃牌了`);
     foldCardsAway(action.playerId);
   }
@@ -1213,21 +1230,29 @@ function updateCountdown() {
   const compareLabel = $('#compareRequestSeconds');
   if (compareLabel && room?.pendingCompare?.expiresAt) compareLabel.textContent = Math.max(0, Math.ceil((room.pendingCompare.expiresAt - Date.now()) / 1000));
   const playing = room?.status === 'playing' && Boolean(room?.turnDeadline);
-  // 圆桌边红色进度环:从轮到玩家的头像位置起,顺时针画一圈,画满=时间到
+  // 非牌局:只负责隐藏环与时钟,不做任何重绘计算
   const ring = $('#turnRing');
   if (ring) {
-    if (playing) {
-      const remaining = Math.max(0, room.turnDeadline - Date.now());
-      const pct = Math.min(1, remaining / 30_000); // 剩余比例
-      const bar = ring.querySelector('.turn-ring-bar');
-      const svg = ring.querySelector('svg');
-      if (bar) {
-        // 增长式:开始无环,随时间从起点画满一圈
-        bar.style.strokeDashoffset = String(295.31 * pct);
-        bar.style.stroke = pct <= 1 / 3 ? '#ff4048' : '#ff6b74';
-      }
-      if (svg) {
-        // 环的起点 = 轮到玩家头像相对桌心的角度
+    if (!playing) {
+      ring.classList.add('hidden');
+      const clock = $('#turnClock');
+      if (clock) clock.classList.add('hidden');
+      return;
+    }
+    const remaining = Math.max(0, room.turnDeadline - Date.now());
+    const pct = Math.min(1, remaining / 30_000); // 剩余比例
+    const bar = ring.querySelector('.turn-ring-bar');
+    if (bar) {
+      // 增长式:开始无环,随时间从起点画满一圈
+      bar.style.strokeDashoffset = String(295.31 * pct);
+      bar.style.stroke = pct <= 1 / 3 ? '#ff4048' : '#ff6b74';
+    }
+    const svg = ring.querySelector('svg');
+    if (svg) {
+      // 环的起点 = 轮到玩家头像相对桌心的角度(只在轮转变化时重算,避免每帧强制重排)
+      const turnIndex = room.turn;
+      if (turnIndex !== lastAngleTurn) {
+        lastAngleTurn = turnIndex;
         const turnSeat = document.querySelector('#players .player-seat.turn');
         let angle = -90;
         if (turnSeat) {
@@ -1239,10 +1264,8 @@ function updateCountdown() {
         }
         svg.style.transform = `rotate(${angle}deg)`;
       }
-      ring.classList.remove('hidden');
-    } else {
-      ring.classList.add('hidden');
     }
+    ring.classList.remove('hidden');
   }
   // 最后10秒:筹码池中央大号倒计时数字
   const clock = $('#turnClock');
@@ -1348,7 +1371,9 @@ function duelFlash() {
     setTimeout(() => flash.remove(), 1100);
   } catch { /* 忽略 */ }
 }
-setInterval(updateCountdown, 250);
+// 倒计时刷新:1000ms 一次(配合 CSS transition 平滑),避免手机端每250ms重绘倒计时环导致发烫
+let lastAngleTurn = -1;
+setInterval(updateCountdown, 1000);
 
 function warmCardDeck() {
   if (deckWarmingStarted) return;
