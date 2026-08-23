@@ -683,3 +683,16 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 
 /* ===== 顶部昵称醒目显示 ===== */
 .user-area b{font-weight:800;color:#ffe081;white-space:nowrap;max-width:96px;overflow:hidden;text-overflow:ellipsis}
+
+/* ===== 机器人陪玩 ===== */
+.bot-tag{position:absolute;top:-8px;right:-4px;font-size:11px;z-index:3;filter:drop-shadow(0 1px 2px #000)}
+.player-seat .remove-bot{position:absolute;top:-10px;right:-10px;width:18px;height:18px;border-radius:50%;border:1px solid #ff7a85;background:#3a0d12f2;color:#ff98a0;font-size:12px;line-height:1;display:grid;place-items:center;padding:0;z-index:4;cursor:pointer}
+.player-seat .remove-bot:active{transform:scale(.9)}
+#addBotBtn{background:linear-gradient(#3f7a6b,#1f4a3e);border-color:#3f7a6b;font-size:12px;padding:0 8px}
+#addBotBtn:active{transform:translateY(1px)}
+.ready-buttons #addBotBtn{min-height:40px}
+
+/* ===== 等待栏按钮:小字并排 ===== */
+.ready-buttons{flex-wrap:nowrap}
+.ready-buttons button{flex:1;min-width:0;white-space:nowrap;font-size:12px;padding:0 6px}
+.ready-buttons button:disabled{font-size:11px}

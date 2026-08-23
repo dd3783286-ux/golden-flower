@@ -644,8 +644,10 @@ function renderPlayers() {
     return `<div class="bet-ring" data-player-id="${esc(player.id)}" style="--rx:${ringX.toFixed(1)}%;--ry:${ringY.toFixed(1)}%"></div><div class="player-seat ${classes}" style="--x:${x};--y:${y}" data-player-id="${esc(player.id)}">
       ${isTurn ? '<span class="seat-spotlight" aria-hidden="true"></span>' : ''}
       ${state ? `<span class="seat-state ${stateClass}" aria-live="polite">${state}</span>` : ''}
+      ${player.bot ? '<span class="bot-tag">🤖</span>' : ''}
+      ${player.bot && room.ownerId === viewerId() && room.status === 'waiting' ? `<button class="remove-bot" data-remove-bot="${esc(player.id)}" title="移除机器人" aria-label="移除机器人">×</button>` : ''}
       <div class="avatar" style="--av-h:${avatarHue(player.id)}">${esc(player.name.slice(0, 1))}${isTurn ? '<span class="turn-time" id="turnCountdown"></span><span class="thinking" aria-hidden="true"><i></i><i></i><i></i></span>' : ''}${index === room.dealer ? '<span class="seat-badge">庄</span>' : ''}${showOpponentCards ? opponentHtml : ''}</div>
-      <div class="seat-name">${esc(player.name)}</div><b class="seat-chips">${player.chips}</b>
+      <div class="seat-name">${player.bot ? '🤖 ' : ''}${esc(player.name)}</div><b class="seat-chips">${player.chips}</b>
     </div>`;
   }).join('');
   stateEffects.forEach(({ id, type }) => {
@@ -725,8 +727,9 @@ function renderActions(mine, turnPlayer) {
     const quickReviews = room.ownerId === viewerId() ? (room.chipRequests || []).filter((request) => request.status === 'pending').map((request) => `<div class="quick-review"><span>${esc(request.playerName)}申请${request.amount}</span><button data-quick-review="${request.id}" data-ok="1">同意</button><button data-quick-review="${request.id}" data-ok="0">拒绝</button></div>`).join('') : '';
     const pendingCount = (room.chipRequests || []).filter((request) => request.status === 'pending').length;
     const approveAllBtn = room.ownerId === viewerId() && pendingCount > 0 ? `<div class="quick-review" style="justify-content:center"><button id="approveAllBtn" class="primary">一键同意全部(${pendingCount})</button></div>` : '';
-    $('#waitingBar').innerHTML = `<div class="ready-summary">${esc(summary)}</div>${readyDetail}${quickChips}${quickReviews}${approveAllBtn}<div class="ready-buttons"><button id="readyButton" class="${mine?.ready ? '' : 'primary'}" ${mine.chips < room.baseBet ? 'disabled' : ''}>${mine.chips < room.baseBet ? '筹码到账后准备' : readyLabel}</button>${room.ownerId === viewerId() ? `<button id="startButton" class="primary" ${available.length < 2 ? 'disabled' : ''}>${available.length < 2 ? '等待玩家就绪' : '开始游戏'}</button>` : '<span>等待房主开始</span>'}</div>`;
+    $('#waitingBar').innerHTML = `<div class="ready-summary">${esc(summary)}</div>${readyDetail}${quickChips}${quickReviews}${approveAllBtn}<div class="ready-buttons"><button id="readyButton" class="${mine?.ready ? '' : 'primary'}" ${mine.chips < room.baseBet ? 'disabled' : ''}>${mine.chips < room.baseBet ? '筹码到账' : readyLabel}</button>${room.ownerId === viewerId() ? `<button id="addBotBtn">🤖 机器人</button><button id="startButton" class="primary" ${available.length < 2 ? 'disabled' : ''}>${available.length < 2 ? '等待玩家就绪' : '开始游戏'}</button>` : '<span>等待房主开始</span>'}</div>`;
     $('#readyButton').onclick = () => emit('set-ready', { code: room.code, ready: !mine.ready });
+    if ($('#addBotBtn')) $('#addBotBtn').onclick = () => emit('add-bot', { code: room.code }, (res) => { if (res?.name) toast(`🤖 ${res.name} 加入房间`); });
     if ($('#startButton')) $('#startButton').onclick = () => emit('start-game', { code: room.code });
     $('#waitingBar').querySelectorAll('[data-quick-chip]').forEach((button) => button.onclick = () => { awaitingChipCredit = true; emit('request-chips', { code: room.code, amount: Number(button.dataset.quickChip) }, () => toast('申请已提交，等待房主批准')); });
     $('#waitingBar').querySelectorAll('[data-quick-review]').forEach((button) => button.onclick = () => emit('review-chips', { code: room.code, requestId: button.dataset.quickReview, approved: button.dataset.ok === '1' }, () => toast(button.dataset.ok === '1' ? '筹码已批准' : '申请已拒绝')));
@@ -1050,8 +1053,16 @@ function showRules() {
   showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，第一局随机庄家，以后顺时针轮庄，庄家下家先操作。</li><li>闷牌按当前档位支付；看牌免费且不换人，看牌后下注为2倍。</li><li>加注档位：1、2、5、10、20、50、100、200、500。</li><li>完成第一轮下注后可以比牌。多人局中，需要所有未弃牌玩家都看牌后才能主动比牌；剩两名玩家时，闷牌玩家可花当前档位开明牌（1倍），明牌玩家可花2倍看闷牌。比牌费只按发起者状态计算，不因对手状态再次翻倍。多人仍在局中时，被比牌者有10秒同意或拒绝；同意后才扣费并比牌，拒绝或超时不扣费，仍由发起者继续操作。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；牌小者淘汰，牌大者留在桌上继续游戏；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；玩家离线时，每轮仍保留30秒操作时间，筹码不足时自动弃牌。</li><li>牌局中筹码不足时可以紧急申请筹码，房主批准后立即到账继续跟注；房主自己申请自动通过。</li></ol>`);
 }
 
-$('#leave').onclick = () => confirmAction('退出房间', room?.status === 'playing' ? '退出后将自动弃牌，并在本局结束后离开房间。' : '确定退出当前房间吗？', async () => {
-  const response = await fetch('/api/leave-room', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: room.code }) });
+// 移除机器人(房主,等待阶段):事件委托,座位上的 × 按钮
+document.addEventListener('click', (event) => {
+  const button = event.target.closest?.('[data-remove-bot]');
+  if (!button) return;
+  emit('remove-bot', { code: room.code, botId: button.dataset.removeBot }, (res) => {
+    if (res?.name) toast(`🤖 ${res.name} 已离开`);
+  });
+});
+
+$('#leave').onclick = () => confirmAction('退出房间', room?.status === 'playing' ? '退出后将自动弃牌，并在本局结束后离开房间。' : '确定退出当前房间吗？', async () => {  const response = await fetch('/api/leave-room', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: room.code }) });
   const data = await response.json();
   if (!response.ok) return toast(data.error || '退出失败，请重试');
   room = null;

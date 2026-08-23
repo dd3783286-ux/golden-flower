@@ -474,7 +474,7 @@ export function canCompare(room) {
   return alive.every((player) => player.seen);
 }
 
-function comparisonAvailability(room, playerId) {
+export function comparisonAvailability(room, playerId) {
   const player = room.players.find((candidate) => candidate.id === playerId);
   if (room.status !== 'playing' || !player || player.folded) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '不可比' };
   if (room.pendingCompare) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '等待确认' };
@@ -564,7 +564,10 @@ export function leavePlayer(room, playerId) {
 
 function transferOwner(room) {
   if (room.players.some((player) => player.id === room.ownerId && !player.leaveAfterRound)) return;
-  const nextOwner = room.players.find((player) => player.connected && !player.leaveAfterRound) || room.players.find((player) => !player.leaveAfterRound);
+  // 房主优先转给真人玩家,避免机器人当房主(机器人无法开局)
+  const nextOwner = room.players.find((player) => !player.bot && player.connected && !player.leaveAfterRound)
+    || room.players.find((player) => !player.bot && !player.leaveAfterRound)
+    || room.players.find((player) => !player.leaveAfterRound);
   room.ownerId = nextOwner?.id || null;
   if (nextOwner) room.log.push(`${nextOwner.name} 成为新房主`);
 }

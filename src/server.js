@@ -10,11 +10,14 @@ import { Server } from 'socket.io';
 import {
   act,
   addPlayer,
+  BET_LEVELS,
+  comparisonAvailability,
   disconnectPlayer,
   expireComparisonRequest,
   expireTurn,
   leavePlayer,
   makeRoom,
+  MAX_PLAYERS,
   publicRoom,
   repayBorrow,
   requestBorrow,
@@ -33,6 +36,18 @@ const server = createServer(app);
 const io = new Server(server, { pingTimeout: 20_000, pingInterval: 10_000 });
 const rooms = new Map();
 const roomTimers = new Map();
+const botTimers = new Map(); // roomCode -> setTimeout,服务端托管机器人行动调度
+// 机器人陪玩名字池:每次添加一个,名字不重复
+const BOT_NAMES = ['小美', '阿强', '旺财'];
+const botIdSequence = { value: 0 };
+const botId = () => `bot_${Date.now().toString(36)}_${(botIdSequence.value += 1)}`;
+const nextBotName = (room) => {
+  const taken = new Set(room.players.map((player) => player.name));
+  const name = BOT_NAMES.find((candidate) => !taken.has(candidate));
+  if (name) return name;
+  throw new Error('机器人陪玩已全部就位');
+};
+const isBotPlayer = (player) => Boolean(player && player.bot);
 const port = Number(process.env.PORT || 3000);
 const baseUrl = process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -167,7 +182,7 @@ app.get('/api/me', (req, res) => res.json({
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // 前端版本号:每次发布时更新(与 index.html 的 ?v= 同步),供"新版本提示"检测
-const APP_VERSION = '20260822dc';
+const APP_VERSION = '20260823rb';
 app.get('/api/version', (_req, res) => res.json({ version: APP_VERSION }));
 
 app.post('/api/dev-login', limitSensitiveRequests, (req, res) => {
@@ -302,6 +317,39 @@ io.on('connection', (socket) => {
     return { code: room.code };
   }));
 
+  // 房主一键添加机器人陪玩(服务端托管,无真实连接)
+  socket.on('add-bot', ({ code }, reply) => safe(reply, () => {
+    const room = mustRoom(code);
+    if (room.ownerId !== user.id) throw new Error('只有房主可以添加机器人');
+    if (room.status !== 'waiting') throw new Error('牌局进行中，请等待下一局');
+    if (room.players.length >= MAX_PLAYERS) throw new Error(`房间已满（最多${MAX_PLAYERS}人）`);
+    const name = nextBotName(room);
+    const botUser = { id: botId(), name, avatar: '', bot: true };
+    addPlayer(room, botUser);
+    // 机器人开局自带筹码并自动准备,房主可直接开始
+    try {
+      requestChips(room, botUser.id, 500);
+      const pending = (room.chipRequests || []).find((request) => request.playerId === botUser.id && request.status === 'pending');
+      if (pending) reviewChipRequest(room, room.ownerId, pending.id, true);
+      setReady(room, botUser.id, true);
+    } catch { /* 筹码/准备异常不阻塞添加 */ }
+    room.log.push(`🤖 ${name} 加入房间`);
+    broadcast(room);
+    return { name };
+  }));
+
+  // 房主移除机器人陪玩
+  socket.on('remove-bot', ({ code, botId: targetId }, reply) => safe(reply, () => {
+    const room = mustRoom(code);
+    if (room.ownerId !== user.id) throw new Error('只有房主可以移除机器人');
+    const bot = room.players.find((player) => player.id === targetId);
+    if (!bot) throw new Error('机器人不存在');
+    if (!isBotPlayer(bot)) throw new Error('只能移除机器人');
+    const result = leavePlayer(room, targetId);
+    if (result.closed) deleteRoom(room.code); else broadcast(room);
+    return { removed: true, name: bot.name };
+  }));
+
   socket.on('leave-room', ({ code }, reply) => safe(reply, () => {
     const room = mustRoom(code);
     const result = leavePlayer(room, user.id);
@@ -417,6 +465,89 @@ function broadcast(room) {
     const client = io.sockets.sockets.get(socketId);
     if (client?.request.session.user) client.emit('room', publicRoom(room, client.request.session.user.id));
   }
+  scheduleBotDecisions(room);
+}
+
+// ---- 服务端托管机器人决策调度 ----
+// 轮到机器人行动时,延迟 1~3 秒模拟"思考",再按真人策略自动操作;
+// 真人被机器人比牌时,机器人自动确认;真人比机器人时,机器人等待真人确认。
+function scheduleBotDecisions(room) {
+  if (room.status !== 'playing' || room.turn < 0) return;
+  if (botTimers.has(room.code)) return;
+  if (room.pendingCompare) {
+    if (isBotPlayer(room.players.find((player) => player.id === room.pendingCompare.targetId))) {
+      const timer = setTimeout(() => {
+        botTimers.delete(room.code);
+        const current = rooms.get(room.code);
+        if (!current?.pendingCompare) return;
+        try {
+          reviewComparison(current, current.pendingCompare.targetId, current.pendingCompare.id, true);
+          broadcast(current);
+        } catch { /* 状态已变化则忽略 */ }
+      }, 900);
+      timer.unref?.();
+      botTimers.set(room.code, timer);
+    }
+    return;
+  }
+  const current = room.players[room.turn];
+  if (!isBotPlayer(current) || current.folded) return;
+  const timer = setTimeout(() => {
+    botTimers.delete(room.code);
+    runBotTurn(room.code, current.id);
+  }, 1_200 + Math.random() * 1_800);
+  timer.unref?.();
+  botTimers.set(room.code, timer);
+}
+
+function runBotTurn(code, botIdValue) {
+  const room = rooms.get(code);
+  if (!room) return;
+  const bot = room.players.find((player) => player.id === botIdValue);
+  if (!bot || room.status !== 'playing' || bot.folded) return;
+  if (room.pendingCompare) return; // 等待对方确认比牌
+  if (room.players[room.turn]?.id !== botIdValue) return; // 已轮到别人
+  try {
+    console.log(`[bot] ${bot.name} 行动(档位${room.currentBet},${bot.seen ? '明' : '闷'},筹码${bot.chips})`);
+    decideBot(room, bot);
+    broadcast(room);
+  } catch (error) {
+    // 决策失败兜底:仍轮到该机器人则按当前档位跟注
+    try {
+      console.log(`[bot] ${bot.name} 决策异常(${error.message})→跟注兜底`);
+      act(room, botIdValue, 'call');
+      broadcast(room);
+    } catch { /* 忽略 */ }
+  }
+}
+
+// 机器人决策(移植自外部陪玩脚本 gf-bot.mjs 的随机稳健策略)
+function decideBot(room, bot) {
+  const { canCompare, compareTargetIds } = comparisonAvailability(room, bot.id);
+  const active = room.players.filter((player) => !player.folded);
+  const tooRich = bot.seen ? room.currentBet * 2 : room.currentBet;
+  const richRand = Math.random();
+  // 筹码很少时保守
+  if (bot.chips < 15 && richRand < 0.5) return act(room, bot.id, 'fold');
+  // 档位越高越倾向弃牌
+  if (tooRich >= 30 && richRand < 0.25) return act(room, bot.id, 'fold');
+  if (tooRich >= 60 && richRand < 0.45) return act(room, bot.id, 'fold');
+  if (tooRich >= 100 && richRand < 0.7) return act(room, bot.id, 'fold');
+  const rand = Math.random();
+  if (!bot.seen && rand < 0.55) {
+    // 看牌:看牌后仍是自己回合,广播后会被再次调度补跟注
+    return act(room, bot.id, 'see');
+  }
+  if (bot.seen && rand > 0.85 && canCompare && compareTargetIds.length) {
+    const targetId = compareTargetIds[Math.floor(Math.random() * compareTargetIds.length)];
+    return showdown(room, bot.id, targetId);
+  }
+  if (rand > 0.93 && room.actionsInHand >= active.length * 3) return act(room, bot.id, 'fold');
+  if (rand > 0.78 && room.currentBet < 50) {
+    const nextLevel = BET_LEVELS.find((level) => level > room.currentBet);
+    if (nextLevel && bot.chips >= nextLevel * (bot.seen ? 2 : 1)) return act(room, bot.id, 'raise', nextLevel);
+  }
+  return act(room, bot.id, 'call');
 }
 
 function scheduleRoom(room) {
@@ -440,7 +571,9 @@ function scheduleRoom(room) {
 
 function deleteRoom(code) {
   clearTimeout(roomTimers.get(code));
+  clearTimeout(botTimers.get(code));
   roomTimers.delete(code);
+  botTimers.delete(code);
   rooms.delete(code);
   scheduleSaveRooms();
 }
@@ -493,7 +626,12 @@ function loadRooms() {
     }
     for (const room of stored) {
       room.ledger ||= [];
-      room.players.forEach((player) => { player.connected = false; player.ready = false; });
+      room.players.forEach((player) => {
+        player.connected = false;
+        player.ready = false;
+        // 服务端托管机器人:加载后视为在线,等待阶段自动补筹码+准备(见 chipAutoTimer)
+        if (isBotPlayer(player)) player.connected = true;
+      });
       room.reveal = null;
       room.pendingCompare = null;
       if (room.status === 'playing') {
@@ -510,7 +648,8 @@ function loadRooms() {
 const cleanupTimer = setInterval(() => {
   const cutoff = Date.now() - 30 * 60 * 1000;
   for (const room of rooms.values()) {
-    const allOffline = room.players.every((player) => !player.connected);
+    // 无真人玩家在线(全是机器人或已离线)的房间视为空房,超时后清理
+    const allOffline = room.players.every((player) => !player.connected || player.bot);
     if (allOffline && room.updatedAt < cutoff) deleteRoom(room.code);
   }
   for (const [key, bucket] of requestBuckets) {
@@ -525,12 +664,16 @@ const chipAutoTimer = setInterval(() => {
     if (room.status !== 'waiting') continue;
     for (const player of room.players) {
       if (!player.bot) continue; // 真人:筹码申请必须经房主批准
-      if (player.chips >= room.baseBet || player.leaveAfterRound) continue;
+      if (player.leaveAfterRound) continue;
       try {
-        const pending = (room.chipRequests || []).find((request) => request.playerId === player.id && request.status === 'pending');
-        if (!pending) requestChips(room, player.id, 500);
-        const latest = (room.chipRequests || []).find((request) => request.playerId === player.id && request.status === 'pending');
-        if (latest) reviewChipRequest(room, room.ownerId, latest.id, true);
+        if (player.chips < room.baseBet) {
+          const pending = (room.chipRequests || []).find((request) => request.playerId === player.id && request.status === 'pending');
+          if (!pending) requestChips(room, player.id, 500);
+          const latest = (room.chipRequests || []).find((request) => request.playerId === player.id && request.status === 'pending');
+          if (latest) reviewChipRequest(room, room.ownerId, latest.id, true);
+        }
+        // 机器人筹码足够后自动准备,房主可直接开局
+        if (player.chips >= room.baseBet && !player.ready) setReady(room, player.id, true);
         broadcast(room);
       } catch { /* 忽略单房间异常 */ }
     }
@@ -553,7 +696,8 @@ const offlineKickTimer = setInterval(() => {
         if (result.closed) { closed = true; break; }
       } catch { /* 忽略单个玩家异常 */ }
     }
-    if (closed) deleteRoom(room.code); else broadcast(room);
+    // 真人全部离开后,只剩机器人的房间直接解散
+    if (closed || !room.players.some((player) => !player.bot)) deleteRoom(room.code); else broadcast(room);
   }
 }, 5_000);
 offlineKickTimer.unref?.();
