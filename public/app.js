@@ -160,8 +160,35 @@ function pickZhVoice() {
   } catch { return null; }
 }
 
+// 真人女声语音片段(edge-tts 晓晓生成,活泼年轻),优先播放;未匹配的走 TTS
+const VOICE_CLIPS = [
+  ['豹子', 'sounds/baozi.mp3'],
+  ['顺金', 'sounds/shunjin.mp3'],
+  ['金花', 'sounds/jinhua.mp3'],
+  ['顺子', 'sounds/shunzi.mp3'],
+  ['对子', 'sounds/duizi.mp3'],
+  ['散牌', 'sounds/sanpai.mp3'],
+  ['轮到你了', 'sounds/lundao.mp3'],
+  ['请尽快操作', 'sounds/kuaidian.mp3'],
+  ['你赢了比牌', 'sounds/wincompare.mp3'],
+  ['你赢了本局', 'sounds/win.mp3'],
+  ['比牌失败', 'sounds/lose.mp3'],
+  ['筹码已到账', 'sounds/chip.mp3']
+];
+const voiceClipCache = {};
+
 function speak(text) {
   try {
+    // 优先播放真人女声片段
+    for (const [key, src] of VOICE_CLIPS) {
+      if (text.includes(key)) {
+        if (!voiceClipCache[src]) voiceClipCache[src] = new Audio(src);
+        voiceClipCache[src].currentTime = 0;
+        voiceClipCache[src].play().catch(() => { /* 忽略 */ });
+        return;
+      }
+    }
+    // 兜底:浏览器语音合成
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);

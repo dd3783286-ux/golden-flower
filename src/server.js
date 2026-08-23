@@ -40,7 +40,7 @@ const dataFile = path.join(dirname, '../data/rooms.json');
 const roomsBackupFile = `${dataFile}.bak`;
 const sessionFile = path.join(dirname, '../data/sessions.json');
 const sessionSecretFile = path.join(dirname, '../data/session-secret.txt');
-const cachedAssetExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.woff', '.woff2']);
+const cachedAssetExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.woff', '.woff2', '.mp3']);
 let saveTimer = null;
 
 class FileSessionStore extends session.Store {
