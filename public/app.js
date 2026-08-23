@@ -1373,7 +1373,21 @@ function duelFlash() {
 }
 // 倒计时刷新:1000ms 一次(配合 CSS transition 平滑),避免手机端每250ms重绘倒计时环导致发烫
 let lastAngleTurn = -1;
-setInterval(updateCountdown, 1000);
+let countdownTimer = null;
+const startCountdownTimer = () => { if (!countdownTimer) countdownTimer = setInterval(updateCountdown, 1000); };
+const stopCountdownTimer = () => { if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; } };
+startCountdownTimer();
+// 后台暂停:页面切到后台(切应用/锁屏)时停止所有定时器与轮询,避免持续耗电发热
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    document.documentElement.classList.remove('is-visible');
+    stopCountdownTimer();
+  } else {
+    document.documentElement.classList.add('is-visible');
+    startCountdownTimer();
+  }
+});
+document.documentElement.classList.add('is-visible');
 
 function warmCardDeck() {
   if (deckWarmingStarted) return;

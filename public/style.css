@@ -696,3 +696,18 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .ready-buttons{flex-wrap:nowrap}
 .ready-buttons button{flex:1;min-width:0;white-space:nowrap;font-size:12px;padding:0 6px}
 .ready-buttons button:disabled{font-size:11px}
+
+/* ===== 性能优化:减少移动端渲染开销 ===== */
+/* 头像倒计时环:与桌面大环 turn-ring SVG 重复,conic-gradient 持续重绘很贵,直接隐藏保留大环 */
+#turnCountdown{display:none!important}
+/* 减少 .turn 状态头像的大范围模糊阴影(20px 模糊渲染代价大) */
+.player-seat.turn .avatar{box-shadow:0 0 0 3px #ffe27755,0 0 8px #ffd75d}
+/* 后台暂停:页面隐藏时(切应用/锁屏)整页静止,避免定时器+网络轮询持续耗电发热 */
+html:not(.is-visible) *{animation-play-state:paused!important;transition:none!important}
+/* 用户开启"减弱动效"系统设置时,关闭装饰性动画与阴影 */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+  .player-seat .avatar,.player-seat.turn .avatar,.player-seat.trustee .avatar,.seat-state.state-seen,.seat-state.state-folded,.seat-state.state-trustee,.seat-state,.turn-time,.turn-ring,.hand-state,.card,.pot-value:before{box-shadow:none!important;text-shadow:none!important}
+  #turnCountdown,#turnClock,.thinking,.seat-spotlight,.turn-time{display:none!important}
+  .turn-time{background:#168164!important}
+}
