@@ -173,7 +173,10 @@ const VOICE_CLIPS = [
   ['你赢了比牌', 'sounds/wincompare.mp3'],
   ['你赢了本局', 'sounds/win.mp3'],
   ['比牌失败', 'sounds/lose.mp3'],
-  ['筹码已到账', 'sounds/chip.mp3']
+  ['筹码已到账', 'sounds/chip.mp3'],
+  ['跟注', 'sounds/genzhu.mp3'],
+  ['加注', 'sounds/jiazhu.mp3'],
+  ['比牌', 'sounds/bipai.mp3']
 ];
 const voiceClipCache = {};
 
@@ -457,8 +460,9 @@ function renderTableAction() {
   if (!element || !action || action.id === lastTableActionId) return;
   lastTableActionId = action.id;
   if (action.round !== room.round || Date.now() - action.at > 5_000) return;
-  if (action.type === 'call' || action.type === 'raise') playSound('chip');
-  else if (action.type === 'compare') playSound('compare');
+  if (action.type === 'call') { playSound('chip'); speak('跟注'); }
+  else if (action.type === 'raise') { playSound('chip'); speak('加注'); }
+  else if (action.type === 'compare') { playSound('compare'); speak('比牌'); }
   else if (action.type === 'fold') {
     playSound('fold');
     toast(`🃏 ${action.playerName} 弃牌了`);
