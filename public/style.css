@@ -637,3 +637,34 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 }
 .bet-info b{color:#ffe081;font-weight:800;font-size:13px;margin-left:1px}
 .bet-info span{display:block;white-space:nowrap}
+
+/* ===== 大厅版面美化 ===== */
+/* 顶部三张牌:叠放扑克牌效果 */
+.lobby-art{display:flex;justify-content:center;align-items:center;gap:4px;margin:10px 0 18px}
+.lobby-art .art-card{
+  width:44px;height:62px;border-radius:5px;
+  background:linear-gradient(150deg,#fffdf6,#e9e3d3);
+  border:1px solid #d9d2bd;
+  box-shadow:0 4px 10px rgba(0,0,0,.4);
+  display:grid;place-items:center;
+  font:700 22px Georgia;color:#1c2320
+}
+.lobby-art .art-card:nth-child(1){transform:rotate(-7deg) translateX(7px)}
+.lobby-art .art-card:nth-child(2){transform:translateY(4px);z-index:2;color:#c62835;border-color:#e2bcbe;box-shadow:0 6px 14px rgba(0,0,0,.45)}
+.lobby-art .art-card:nth-child(3){transform:rotate(7deg) translateX(-7px)}
+/* 大厅标题与说明 */
+#lobby h2{font-size:24px;color:#ffe091;margin:4px 0}
+#lobby>p{color:#9cb8b1;font-size:13px;margin:4px 0 18px}
+/* 创建房间大按钮 */
+#lobby #create{min-height:52px;font-size:17px;border-radius:13px;box-shadow:0 6px 16px rgba(0,0,0,.35),inset 0 1px #fff8}
+/* 加入区 */
+#lobby form{gap:8px;margin:6px 0 14px}
+#lobby form input{border-radius:11px;min-height:50px}
+#lobby form button{border-radius:11px;min-height:50px;min-width:76px}
+/* 底部文字按钮胶囊化 */
+#lobby .text-button,#login .text-button{
+  background:#0c2a24cc;border:1px solid #2f655a;border-radius:9px;
+  color:#c9d8d2;min-height:36px;padding:0 14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08)
+}
+#lobby .text-button:active,#login .text-button:active{transform:scale(.95)}
