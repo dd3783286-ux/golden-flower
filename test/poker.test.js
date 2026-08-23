@@ -130,16 +130,21 @@ test('成熟下注档位只能向上选择', () => {
   assert.throws(() => act(room, '1', 'raise', 2), /高于当前档位/);
 });
 
-test('完成首轮下注后才能比牌，只有比牌双方能看到牌面', () => {
+test('完成首轮下注且所有人都看牌后才能比牌，只有比牌双方能看到牌面', () => {
   const room = fundedRoom(500, 3);
   startGame(room, '1', () => 0);
-  assert.throws(() => showdown(room, room.players[room.turn].id, '1'), /一轮下注/);
-  for (let index = 0; index < 3; index += 1) act(room, room.players[room.turn].id, 'call');
+  assert.throws(() => showdown(room, room.players[room.turn].id, '1'), /看牌/);
+  for (let index = 0; index < 3; index += 1) {
+    const current = room.players[room.turn];
+    act(room, current.id, 'see');
+    act(room, current.id, 'call');
+  }
   const challenger = room.players[room.turn];
-  act(room, challenger.id, 'see');
   const target = room.players.find((item) => item.id !== challenger.id && !item.folded);
   assert.equal(publicRoom(room, challenger.id).canCompare, true);
-  const reveal = showdown(room, challenger.id, target.id);
+  const requested = showdown(room, challenger.id, target.id);
+  if (requested.pending) reviewComparison(room, target.id, room.pendingCompare.id, true);
+  const reveal = room.reveal;
   assert.deepEqual({ type: room.lastAction.type, targetName: room.lastAction.targetName }, { type: 'compare', targetName: target.name });
   assert.equal(reveal.challengerHand.length, 3);
   const participantState = publicRoom(room, challenger.id);
@@ -156,51 +161,48 @@ test('完成首轮下注后才能比牌，只有比牌双方能看到牌面', ()
   assert.equal(spectatorState.reveal.targetType, null);
 });
 
-test('闷牌仅在剩两人时可按跟注额与明牌玩家比牌', () => {
+test('有人闷牌时不能比牌，全部看牌后才能比', () => {
   const room = fundedRoom(500, 3);
   startGame(room, '1', () => 0);
+  // 完成首轮下注(全员闷牌)
+  for (let index = 0; index < 3; index += 1) act(room, room.players[room.turn].id, 'call');
   const blindPlayer = room.players[room.turn];
+  const target = room.players.find((item) => item.id !== blindPlayer.id && !item.folded);
+  // 全闷时不可比
+  assert.equal(publicRoom(room, blindPlayer.id).canCompare, false);
+  assert.throws(() => showdown(room, blindPlayer.id, target.id), /看牌/);
+  // 有人看牌但还有人闷牌时,明牌玩家也不可比
+  act(room, blindPlayer.id, 'see');
   act(room, blindPlayer.id, 'call');
-  const seenPlayer = room.players[room.turn];
-  act(room, seenPlayer.id, 'see');
-  act(room, seenPlayer.id, 'call');
-  const thirdPlayer = room.players[room.turn];
-  act(room, thirdPlayer.id, 'call');
-
-  const threePlayerView = publicRoom(room, blindPlayer.id);
-  assert.equal(threePlayerView.canCompare, false);
-  assert.equal(threePlayerView.compareHint, '剩两人');
-  assert.throws(() => showdown(room, blindPlayer.id, seenPlayer.id), /剩余两名玩家/);
-
-  act(room, blindPlayer.id, 'call');
-  act(room, seenPlayer.id, 'call');
-  act(room, thirdPlayer.id, 'fold');
-  const twoPlayerView = publicRoom(room, blindPlayer.id);
-  assert.equal(twoPlayerView.canCompare, true);
-  assert.deepEqual(twoPlayerView.compareTargetIds, [seenPlayer.id]);
-  const expectedCost = room.currentBet;
-  const beforeChips = blindPlayer.chips;
-  const reveal = showdown(room, blindPlayer.id, seenPlayer.id);
-  assert.equal(reveal.cost, expectedCost);
-  assert.equal(blindPlayer.chips, beforeChips - expectedCost);
+  const seenPlayer = blindPlayer;
+  assert.equal(publicRoom(room, seenPlayer.id).canCompare, false);
+  assert.equal(publicRoom(room, seenPlayer.id).compareHint, '所有人看牌后可比');
+  // 全员看牌后可以比
+  for (let index = 0; index < 2; index += 1) {
+    const current = room.players[room.turn];
+    act(room, current.id, 'see');
+    act(room, current.id, 'call');
+  }
+  const challenger = room.players[room.turn];
+  const finalTarget = room.players.find((item) => item.id !== challenger.id && !item.folded);
+  assert.equal(publicRoom(room, challenger.id).canCompare, true);
+  assert.ok(showdown(room, challenger.id, finalTarget.id));
 });
 
-test('剩两名玩家都闷牌时可以闷开并按1倍支付', () => {
+test('剩两名玩家时，闷牌可以开明牌并按1倍支付', () => {
   const room = fundedRoom(500, 2);
   startGame(room, '1', () => 0);
   act(room, room.players[room.turn].id, 'call');
   act(room, room.players[room.turn].id, 'call');
   const challenger = room.players[room.turn];
   const target = room.players.find((player) => player.id !== challenger.id && !player.folded);
-  const view = publicRoom(room, challenger.id);
-  assert.equal(view.canCompare, true);
-  assert.deepEqual(view.compareTargetIds, [target.id]);
+  assert.equal(publicRoom(room, challenger.id).canCompare, true);
   const expectedCost = room.currentBet;
   const reveal = showdown(room, challenger.id, target.id);
   assert.equal(reveal.cost, expectedCost);
 });
 
-test('剩两人时明牌玩家可以比闷牌玩家并按当前档位2倍支付', () => {
+test('剩两名玩家时，明牌可以花2倍看闷牌', () => {
   const room = fundedRoom(500, 2);
   startGame(room, '1', () => 0);
   act(room, room.players[room.turn].id, 'call');
@@ -208,8 +210,7 @@ test('剩两人时明牌玩家可以比闷牌玩家并按当前档位2倍支付'
   const challenger = room.players[room.turn];
   const target = room.players.find((player) => player.id !== challenger.id && !player.folded);
   act(room, challenger.id, 'see');
-  const view = publicRoom(room, challenger.id);
-  assert.equal(view.canCompare, true);
+  assert.equal(publicRoom(room, challenger.id).canCompare, true);
   const expectedCost = room.currentBet * 2;
   const reveal = showdown(room, challenger.id, target.id);
   assert.equal(reveal.cost, expectedCost);
@@ -294,6 +295,9 @@ test('最终比牌后牌面保留到玩家点击下一局', () => {
   const challenger = room.players[room.turn];
   const target = room.players.find((item) => item.id !== challenger.id && !item.folded);
   act(room, challenger.id, 'see');
+  act(room, challenger.id, 'call');
+  act(room, target.id, 'see');
+  act(room, target.id, 'call');
   showdown(room, challenger.id, target.id);
   assert.equal(room.status, 'waiting');
   assert.ok(room.reveal);

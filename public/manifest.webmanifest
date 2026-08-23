@@ -1,0 +1,14 @@
+{
+  "name": "三张牌",
+  "short_name": "三张牌",
+  "description": "好友房炸金花 · 纯娱乐虚拟筹码",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#071f1a",
+  "theme_color": "#071f1a",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

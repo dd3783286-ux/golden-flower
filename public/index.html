@@ -4,9 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#071f1a">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <title>三张牌</title>
   <link rel="preload" as="image" href="/assets/cards-standard/classic-navy-back-v3.jpg">
-  <link rel="stylesheet" href="/style.css?v=20260815-38">
+  <link rel="stylesheet" href="/style.css?v=20260822dc">
 </head>
 <body>
   <main id="app">
@@ -21,6 +23,7 @@
       <p>使用虚拟筹码娱乐，不支持充值、提现或兑换。</p>
       <a id="wxLogin" class="button primary" href="/auth/wechat">微信登录</a>
       <form id="devForm"><input id="nickname" aria-label="测试昵称" maxlength="12" autocomplete="nickname" placeholder="输入测试昵称" required><button class="secondary">测试进入</button></form>
+      <button id="testSound" class="text-button" style="margin-top:12px">🔊 测试音效</button>
     </section>
 
     <section id="lobby" class="screen card-panel hidden">
@@ -31,29 +34,33 @@
       <div class="divider"><span>加入已有房间</span></div>
       <form id="joinForm"><input id="roomCode" aria-label="六位房间号" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="输入6位房间号" required><button class="secondary">加入</button></form>
       <button id="rulesButton" class="text-button">查看完整房规</button>
+      <button id="testSoundLobby" class="text-button">🔊 测试音效</button>
     </section>
 
     <section id="table" class="game-screen hidden">
       <div class="room-bar">
         <div class="room-left"><button id="leave" class="icon-button">退出</button><span id="ownerName" class="owner-name">房主</span></div>
         <div class="room-title"><strong>房间 <span id="code"></span></strong><span id="roomStatus">等待开局</span></div>
-        <div class="room-right"><button id="invite" class="icon-button">邀请好友</button><button id="switchName" class="room-sub-button">切换名字</button></div>
+        <div class="room-right"><button id="muteButton" class="icon-button" title="音效开关">♪</button><button id="testSoundBar" class="icon-button sound-btn" title="测试音效">🔊</button><button id="invite" class="icon-button">邀请</button><button id="switchName" class="room-sub-button">改名</button></div>
       </div>
 
       <div id="tableStage" class="table-stage">
         <div class="felt-rim"><div class="felt">
-          <div class="table-brand">GOOD LUCK</div>
           <div class="pot-label">筹码池</div><b id="pot" class="pot-value">0</b>
+          <div class="chip-stack" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div id="potChips" class="pot-chips" aria-hidden="true"></div>
+          <div id="turnClock" class="turn-clock hidden"></div>
+          <div id="turnRing" class="turn-ring hidden" aria-hidden="true"><svg viewBox="0 0 100 100"><circle class="turn-ring-track" cx="50" cy="50" r="47"></circle><circle class="turn-ring-bar" cx="50" cy="50" r="47"></circle></svg></div>
           <div id="tableAction" class="table-action hidden" aria-live="polite"></div>
-          <div class="bet-info">底注 <b id="baseBet">1</b><i></i>当前档 <b id="currentBet">1</b><i></i>第 <b id="round">0</b> 局</div>
         </div></div>
+        <div class="bet-info"><span>底注<b id="baseBet">1</b></span><span>当前档<b id="currentBet">1</b></span><span>第<b id="round">0</b>局</span></div>
         <div id="players" class="players"></div>
         <div id="chipFlight" class="chip-flight hidden">1</div>
       </div>
 
       <section class="my-zone">
-        <div id="handState" class="hand-state">等待开局</div>
         <div id="cards" class="cards"></div>
+        <div id="handState" class="hand-state">等待开局</div>
         <div id="myStats" class="my-stats"></div>
       </section>
 
@@ -64,6 +71,7 @@
         <button id="trusteeButton">托管</button>
         <button id="chipsButton">筹码与审批 <span id="requestBadge" class="badge hidden">0</span></button>
         <button id="logButton">牌局记录</button>
+        <button id="testSoundInGame" title="测试音效">🔊</button>
         <button id="tableRulesButton">房规</button>
       </section>
     </section>
@@ -86,6 +94,6 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=20260815-44"></script>
+  <script src="/app.js?v=20260822dc"></script>
 </body>
 </html>

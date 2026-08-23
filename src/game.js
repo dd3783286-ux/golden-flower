@@ -45,6 +45,7 @@ function makePlayer(player) {
     id: player.id,
     name: player.name,
     avatar: player.avatar || '',
+    bot: Boolean(player.bot),
     chips: 0,
     totalApproved: 0,
     borrowedIn: 0,
@@ -115,6 +116,7 @@ export function addPlayer(room, player) {
   const existing = room.players.find((p) => p.id === player.id);
   if (existing) {
     existing.connected = true;
+    existing.bot = Boolean(player.bot);
     existing.lastSeenAt = now();
     existing.leaveAfterRound = false;
     return touch(room), existing;
@@ -151,7 +153,6 @@ export function setTrustee(room, playerId, enabled) {
 }
 
 export function requestChips(room, playerId, amount) {
-  ensureWaiting(room);
   ensureAmount(amount);
   const player = mustPlayer(room, playerId);
   if (room.chipRequests.some((r) => r.playerId === playerId && r.status === 'pending')) throw new Error('已有待审批申请');
@@ -163,7 +164,6 @@ export function requestChips(room, playerId, amount) {
 }
 
 export function reviewChipRequest(room, ownerId, requestIdValue, approved) {
-  ensureWaiting(room);
   if (room.ownerId !== ownerId) throw new Error('只有房主可以审批');
   const request = room.chipRequests.find((r) => r.id === requestIdValue && r.status === 'pending');
   if (!request) throw new Error('申请不存在或已处理');
@@ -276,14 +276,17 @@ export function repayBorrow(room, borrowerId, debtId, amount) {
 export function startGame(room, requesterId, random = Math.random) {
   if (room.ownerId !== requesterId) throw new Error('只有房主可以开局');
   ensureWaiting(room);
+  // 房主发起开局时,如果自己忘了点准备,自动视为已准备并参与本局
+  const requester = room.players.find((player) => player.id === requesterId);
+  if (requester) requester.ready = true;
   const activeIndexes = room.players
     .map((player, index) => ({ player, index }))
-    .filter(({ player }) => player.connected && player.ready && player.chips >= room.baseBet && !player.leaveAfterRound)
+    .filter(({ player }) => player.ready && player.chips >= room.baseBet && !player.leaveAfterRound)
     .map(({ index }) => index);
   if (activeIndexes.length < 2) {
-    const unavailable = room.players.filter((player) => player.connected && !player.leaveAfterRound && (!player.ready || player.chips < room.baseBet));
+    const unavailable = room.players.filter((player) => !player.leaveAfterRound && (!player.ready || player.chips < room.baseBet));
     const details = unavailable.map((player) => `${player.name}${player.chips < room.baseBet ? '筹码不足' : ''}${!player.ready ? `${player.chips < room.baseBet ? '且' : ''}未准备` : ''}`).join('、');
-    const missing = Math.max(0, 2 - room.players.filter((player) => player.connected && !player.leaveAfterRound).length);
+    const missing = Math.max(0, 2 - room.players.filter((player) => !player.leaveAfterRound).length);
     throw new Error(`还不能开局：${details || `还需${missing || 1}名玩家进入并准备`}`);
   }
 
@@ -304,6 +307,8 @@ export function startGame(room, requesterId, random = Math.random) {
     player.bet = 0;
     player.hand = player.folded ? [] : deck.splice(0, 3);
     if (!player.folded) {
+      // 开局瞬间断线的已准备玩家不弃牌,进入托管自动跟注,重连后可恢复
+      if (player.connected === false) player.autoPlay = true;
       player.chips -= room.baseBet;
       player.bet = room.baseBet;
       room.pot += room.baseBet;
@@ -364,17 +369,14 @@ export function showdown(room, playerId, targetId) {
   if (room.pendingCompare) throw new Error('已有待确认的比牌请求');
   const { player, index } = currentPlayer(room, playerId);
   player.autoPlay = false;
+  const alive = room.players.filter((candidate) => !candidate.folded);
+  if (!player.seen && alive.length > 2) throw new Error('多人牌局中闷牌不能主动比牌，请先看牌');
   if (!canCompare(room)) throw new Error('至少完成一轮下注后才能比牌');
   const target = room.players.find((candidate) => candidate.id === targetId && !candidate.folded && candidate.id !== playerId);
   if (!target) throw new Error('请选择仍在牌局中的对手');
-  if (!player.seen) {
-    const alive = room.players.filter((candidate) => !candidate.folded);
-    if (alive.length !== 2) throw new Error('闷牌仅在牌局剩余两名玩家时可以比牌');
-  }
   // 比牌费只按发起者状态计算：闷牌1倍、明牌2倍，不因对手状态再次翻倍。
   const cost = comparisonCost(room, player, target);
   if (player.chips < cost) throw new Error(`筹码不足，需要 ${cost}`);
-  const alive = room.players.filter((candidate) => !candidate.folded);
   if (alive.length > 2 && player.seen && target.seen) {
     const currentTime = now();
     room.pendingCompare = {
@@ -464,19 +466,27 @@ function resolveShowdown(room, player, index, target, cost) {
 }
 
 export function canCompare(room) {
-  return room.actionsInHand >= room.players.filter((player) => !player.folded).length;
+  const alive = room.players.filter((player) => !player.folded);
+  if (room.actionsInHand < alive.length) return false;
+  // 剩 2 人:允许比牌(闷开/明看闷);多人局:必须全员看牌后才能主动比牌
+  if (alive.length <= 2) return true;
+  return alive.every((player) => player.seen);
 }
 
 function comparisonAvailability(room, playerId) {
   const player = room.players.find((candidate) => candidate.id === playerId);
   if (room.status !== 'playing' || !player || player.folded) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '不可比' };
   if (room.pendingCompare) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '等待确认' };
-  if (!canCompare(room)) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '首轮后' };
-  const opponents = room.players.filter((candidate) => !candidate.folded && candidate.id !== playerId);
+  const alive = room.players.filter((candidate) => !candidate.folded);
+  const opponents = alive.filter((candidate) => candidate.id !== playerId);
   const compareCosts = Object.fromEntries(opponents.map((candidate) => [candidate.id, comparisonCost(room, player, candidate)]));
-  if (player.seen) return { canCompare: opponents.length > 0, compareTargetIds: opponents.map((candidate) => candidate.id), compareCosts, compareHint: '' };
-  if (opponents.length !== 1) return { canCompare: false, compareTargetIds: [], compareCosts: {}, compareHint: '剩两人' };
-  return { canCompare: true, compareTargetIds: [opponents[0].id], compareCosts, compareHint: '' };
+  if (!canCompare(room)) return { canCompare: false, compareTargetIds: [], compareCosts, compareHint: alive.length <= 2 ? '首轮后' : '所有人看牌后可比' };
+  // 剩 2 人:发起者闷/明均可主动比牌
+  if (alive.length <= 2) return { canCompare: opponents.length > 0, compareTargetIds: opponents.map((candidate) => candidate.id), compareCosts, compareHint: '' };
+  // 多人局:自己必须已看牌
+  if (!player.seen) return { canCompare: false, compareTargetIds: [], compareCosts, compareHint: '看牌后可比' };
+  if (!opponents.every((candidate) => candidate.seen)) return { canCompare: false, compareTargetIds: [], compareCosts, compareHint: '所有人看牌后可比' };
+  return { canCompare: opponents.length > 0, compareTargetIds: opponents.map((candidate) => candidate.id), compareCosts, compareHint: '' };
 }
 
 export function expireTurn(room, currentTime = now()) {

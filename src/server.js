@@ -166,11 +166,15 @@ app.get('/api/me', (req, res) => res.json({
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+// 前端版本号:每次发布时更新(与 index.html 的 ?v= 同步),供"新版本提示"检测
+const APP_VERSION = '20260822cf';
+app.get('/api/version', (_req, res) => res.json({ version: APP_VERSION }));
+
 app.post('/api/dev-login', limitSensitiveRequests, (req, res) => {
   if (process.env.ALLOW_DEV_LOGIN === 'false') return res.status(403).json({ error: '测试登录已关闭' });
   const name = String(req.body.name || '').trim().slice(0, 12);
   if (!name) return res.status(400).json({ error: '请输入昵称' });
-  req.session.user = { id: `dev_${crypto.randomUUID()}`, name, avatar: '' };
+  req.session.user = { id: `dev_${crypto.randomUUID()}`, name, avatar: '', bot: req.body.bot === true };
   req.session.save(() => res.json({ user: req.session.user }));
 });
 
@@ -254,6 +258,10 @@ app.get('/auth/wechat/callback', async (req, res) => {
 });
 
 loadRooms();
+backupRooms(); // 启动时备份一次
+// 每6小时定时备份
+const backupTimer = setInterval(backupRooms, 6 * 60 * 60 * 1000);
+backupTimer.unref?.();
 io.engine.use(sessionMiddleware);
 io.on('connection', (socket) => {
   const user = socket.request.session.user;
@@ -442,6 +450,22 @@ function saveRooms() {
   }
 }
 
+// 数据自动备份:启动时 + 每6小时快照到 data/backups,保留最近10份
+function backupRooms() {
+  if (process.env.NODE_ENV === 'test') return;
+  try {
+    const dir = path.join(dirname, '../data/backups');
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    const target = path.join(dir, `rooms-${stamp}.json`);
+    if (fs.existsSync(dataFile)) fs.copyFileSync(dataFile, target);
+    const list = fs.readdirSync(dir).filter((f) => f.startsWith('rooms-')).sort();
+    for (let i = 0; i < list.length - 10; i += 1) fs.unlinkSync(path.join(dir, list[i]));
+  } catch (error) {
+    console.error('备份失败：', error.message);
+  }
+}
+
 function scheduleSaveRooms() {
   if (process.env.NODE_ENV === 'test') return;
   clearTimeout(saveTimer);
@@ -486,6 +510,45 @@ const cleanupTimer = setInterval(() => {
   }
 }, 10 * 60 * 1000);
 cleanupTimer.unref?.();
+
+// 等待阶段自动补筹码:只对机器人(bot)生效,真人必须走房主审批
+const chipAutoTimer = setInterval(() => {
+  for (const room of rooms.values()) {
+    if (room.status !== 'waiting') continue;
+    for (const player of room.players) {
+      if (!player.bot) continue; // 真人:筹码申请必须经房主批准
+      if (player.chips >= room.baseBet || player.leaveAfterRound) continue;
+      try {
+        const pending = (room.chipRequests || []).find((request) => request.playerId === player.id && request.status === 'pending');
+        if (!pending) requestChips(room, player.id, 500);
+        const latest = (room.chipRequests || []).find((request) => request.playerId === player.id && request.status === 'pending');
+        if (latest) reviewChipRequest(room, room.ownerId, latest.id, true);
+        broadcast(room);
+      } catch { /* 忽略单房间异常 */ }
+    }
+  }
+}, 1_500);
+chipAutoTimer.unref?.();
+
+// 真人离线自动清理:非机器人玩家离线超过30秒自动移出房间(牌局中则自动弃牌,本局结束移除)
+const offlineKickTimer = setInterval(() => {
+  const cutoff = Date.now() - 30_000;
+  for (const room of rooms.values()) {
+    const kickIds = room.players
+      .filter((player) => !player.bot && !player.connected && (player.lastSeenAt || 0) <= cutoff)
+      .map((player) => player.id);
+    if (!kickIds.length) continue;
+    let closed = false;
+    for (const id of kickIds) {
+      try {
+        const result = leavePlayer(room, id);
+        if (result.closed) { closed = true; break; }
+      } catch { /* 忽略单个玩家异常 */ }
+    }
+    if (closed) deleteRoom(room.code); else broadcast(room);
+  }
+}, 5_000);
+offlineKickTimer.unref?.();
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, () => {
