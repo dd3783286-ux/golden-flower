@@ -166,8 +166,8 @@ function speak(text) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-CN';
-    utterance.rate = 0.9;   // 语速放慢,保证清晰
-    utterance.pitch = 1.1;  // 音调略高,更显年轻
+    utterance.rate = 1.02;   // 语速略快,更活泼(仍清晰)
+    utterance.pitch = 1.35;  // 音调明显提高,更年轻有活力
     const zhVoice = pickZhVoice();
     if (zhVoice) utterance.voice = zhVoice;
     // 延迟播报,避免 iOS 上 cancel 后立即 speak 被吞
