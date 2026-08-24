@@ -715,3 +715,6 @@ html:not(.is-visible) *{animation-play-state:paused!important;transition:none!im
 .room-right .sound-toggle.muted{color:#8a9b96;text-decoration:line-through;opacity:.6}
 .room-right .sound-toggle.muted:after{content:"";position:absolute;width:16px;height:2px;background:#8a9b96;transform:rotate(-45deg)}
 @media(max-width:430px){.room-right .sound-toggle{width:28px;height:28px;min-height:28px;font-size:14px}}
+
+/* ===== 底部版权署名 ===== */
+.app-footer{text-align:center;font-size:11px;color:#4e6f67;padding:10px 0 calc(14px + var(--safe-bottom));user-select:none}
