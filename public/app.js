@@ -933,19 +933,6 @@ $('#trusteeButton').onclick = () => {
   emit('set-trustee', { code: room.code, enabled: !mine.autoPlay }, () => toast(mine.autoPlay ? '已取消托管' : '已进入托管'));
 };
 
-function showRaiseSheet() {
-  const mine = room.players.find((player) => player.id === viewerId());
-  const factor = mine.seen ? 2 : 1;
-  const levels = BET_LEVELS.filter((level) => level > room.currentBet);
-  showSheet(`<h3>选择加注档位</h3><p class="meta">${mine.seen ? '明牌支付档位的2倍' : '闷牌按档位支付'}</p><div class="choice-grid">${levels.map((level) => `<button data-raise="${level}" ${mine.chips < level * factor ? 'disabled' : ''}>${level}<small>付${level * factor}</small></button>`).join('')}</div>`);
-  $('#sheetContent').querySelectorAll('[data-raise]').forEach((button) => button.onclick = () => {
-    const level = Number(button.dataset.raise);
-    button.disabled = true;
-    button.textContent = '提交中';
-    emit('action', { code: room.code, action: 'raise', raiseTo: level }, () => { closeSheet(); toast(`已加注到 ${level}`); });
-  });
-}
-
 function showCompareTargets() {
   const mine = room.players.find((player) => player.id === viewerId());
   const allowedTargets = new Set(room.compareTargetIds || []);
