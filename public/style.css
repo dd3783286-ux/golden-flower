@@ -287,7 +287,7 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 
 /* 5. 轮到你时头像呼吸 */
 .player-seat.turn .avatar{animation:avatarBreath 1.5s ease-in-out infinite}
-@keyframes avatarBreath{0%,100%{box-shadow:0 0 0 3px #f5cb6138,0 0 14px #e4aa3b66}50%{box-shadow:0 0 0 5px #f5cb61aa,0 0 26px #e4aa3bbb}}
+@keyframes avatarBreath{0%,100%{opacity:.82}50%{opacity:1}}
 
 /* ===== 看牌瞄牌动作 + 进出房提示 20260822ar ===== */
 /* 3. 看牌前"搓一下牌"再翻面 */

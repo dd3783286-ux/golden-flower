@@ -683,8 +683,17 @@ function dealCardsAnimation() {
   }, total);
 }
 
+let lastPlayersKey = '';
 function renderPlayers() {
   const playerCount = room.players.length;
+  // 变化检测:玩家关键状态无变化时跳过全量 DOM 重建(机器人连招/等待阶段大幅减负,降低发热)
+  const playersKey = [
+    room.status, room.round, room.pot, room.currentBet, room.dealer,
+    room.players.map((p) => `${p.id}:${p.name}:${p.chips}:${p.seen}:${p.folded}:${p.ready}:${p.bot ? 1 : 0}`).join('|'),
+    room.players[room.turn]?.id || ''
+  ].join('#');
+  if (playersKey === lastPlayersKey) return;
+  lastPlayersKey = playersKey;
   const newDeal = room.status === 'playing' && room.round > lastAnimatedRound;
   if (room.round !== visualStateRound) {
     visualStateRound = room.round;
@@ -1308,7 +1317,7 @@ function animateChip(amount) {
         const mini = document.createElement('i');
         mini.style.background = `radial-gradient(circle at 35% 30%,${colors[Math.floor(Math.random() * colors.length)]},#00000088)`;
         potChips.appendChild(mini);
-        while (potChips.children.length > 16) potChips.firstChild.remove();
+        while (potChips.children.length > 8) potChips.firstChild.remove();
       }
     }
   } catch { /* 忽略 */ }
