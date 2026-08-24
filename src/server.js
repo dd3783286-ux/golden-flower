@@ -11,6 +11,7 @@ import {
   act,
   addPlayer,
   BET_LEVELS,
+  betCost,
   comparisonAvailability,
   disconnectPlayer,
   expireComparisonRequest,
@@ -182,7 +183,7 @@ app.get('/api/me', (req, res) => res.json({
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // 前端版本号:每次发布时更新(与 index.html 的 ?v= 同步),供"新版本提示"检测
-const APP_VERSION = '20260824l';
+const APP_VERSION = '20260824m';
 app.get('/api/version', (_req, res) => res.json({ version: APP_VERSION }));
 
 app.post('/api/dev-login', limitSensitiveRequests, (req, res) => {
@@ -526,7 +527,7 @@ function runBotTurn(code, botIdValue) {
   if (room.pendingCompare) return; // 等待对方确认比牌
   if (room.players[room.turn]?.id !== botIdValue) return; // 已轮到别人
   // 筹码不足当前跟注额时,先自动补筹码,避免行动失败拖到30秒超时
-  const need = room.currentBet * (bot.seen ? 2 : 1);
+  const need = betCost(room.currentBet, bot.seen);
   if (bot.chips < need) ensureBotChips(room, bot);
   try {
     console.log(`[bot] ${bot.name} 行动(档位${room.currentBet},${bot.seen ? '明' : '闷'},筹码${bot.chips})`);
@@ -557,7 +558,7 @@ function ensureBotChips(room, bot) {
 function decideBot(room, bot) {
   const { canCompare, compareTargetIds } = comparisonAvailability(room, bot.id);
   const active = room.players.filter((player) => !player.folded);
-  const tooRich = bot.seen ? room.currentBet * 2 : room.currentBet;
+  const tooRich = betCost(room.currentBet, bot.seen);
   const richRand = Math.random();
   // 筹码极少才弃(阈值放宽,不再轻易放弃)
   if (bot.chips < 10 && richRand < 0.35) return act(room, bot.id, 'fold');
@@ -579,7 +580,7 @@ function decideBot(room, bot) {
   if (rand > 0.92 && room.actionsInHand >= active.length * 4) return act(room, bot.id, 'fold');
   if (rand > 0.72 && room.currentBet < 100) {
     const nextLevel = room.currentBet + 1 + Math.floor(Math.random() * 6); // 加1~6注
-    if (bot.chips >= nextLevel * (bot.seen ? 2 : 1)) return act(room, bot.id, 'raise', nextLevel);
+    if (bot.chips >= betCost(nextLevel, bot.seen)) return act(room, bot.id, 'raise', nextLevel);
   }
   return act(room, bot.id, 'call');
 }

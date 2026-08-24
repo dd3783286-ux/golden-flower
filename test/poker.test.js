@@ -106,7 +106,7 @@ test('第一局随机庄家，后续顺时针轮庄', () => {
   assert.equal(room.turn, 0);
 });
 
-test('闷牌1倍、明牌2倍，看牌后仍由本人操作', () => {
+test('闷牌付一半、明牌付全额，看牌后仍由本人操作', () => {
   const room = fundedRoom();
   startGame(room, '1', () => 0);
   const second = room.players[1];
@@ -117,7 +117,7 @@ test('闷牌1倍、明牌2倍，看牌后仍由本人操作', () => {
   assert.equal(room.turn, 0);
   const before = room.players[0].chips;
   act(room, '1', 'call');
-  assert.equal(room.players[0].chips, before - 2);
+  assert.equal(room.players[0].chips, before - 1);
 });
 
 test('成熟下注档位只能向上选择', () => {
@@ -202,7 +202,7 @@ test('剩两名玩家时，闷牌可以开明牌并按1倍支付', () => {
   assert.equal(reveal.cost, expectedCost);
 });
 
-test('剩两名玩家时，明牌可以花2倍看闷牌', () => {
+test('剩两名玩家时，明牌按档位看闷牌', () => {
   const room = fundedRoom(500, 2);
   startGame(room, '1', () => 0);
   act(room, room.players[room.turn].id, 'call');
@@ -211,7 +211,7 @@ test('剩两名玩家时，明牌可以花2倍看闷牌', () => {
   const target = room.players.find((player) => player.id !== challenger.id && !player.folded);
   act(room, challenger.id, 'see');
   assert.equal(publicRoom(room, challenger.id).canCompare, true);
-  const expectedCost = room.currentBet * 2;
+  const expectedCost = room.currentBet;
   const reveal = showdown(room, challenger.id, target.id);
   assert.equal(reveal.cost, expectedCost);
 });
@@ -227,7 +227,7 @@ test('明牌玩家与明牌玩家比牌按明牌跟注额1比1支付', () => {
   const challenger = room.players[room.turn];
   const target = room.players.find((player) => player.id !== challenger.id && !player.folded);
   act(room, challenger.id, 'see');
-  const expectedCost = room.currentBet * 2;
+  const expectedCost = room.currentBet;
   const view = publicRoom(room, challenger.id);
   assert.equal(view.compareCosts[target.id], expectedCost);
   const reveal = showdown(room, challenger.id, target.id);
@@ -280,8 +280,8 @@ test('多人明牌比牌同意后才扣费并淘汰小牌玩家', () => {
   const before = challenger.chips;
   showdown(room, challenger.id, target.id);
   const reveal = reviewComparison(room, target.id, room.pendingCompare.id, true);
-  assert.equal(challenger.chips, before - room.currentBet * 2);
-  assert.equal(reveal.cost, room.currentBet * 2);
+  assert.equal(challenger.chips, before - room.currentBet);
+  assert.equal(reveal.cost, room.currentBet);
   assert.equal(room.players.filter((player) => !player.folded).length, 2);
   assert.equal(room.players.find((player) => player.id === reveal.loserId).folded, true);
   assert.equal(room.players.find((player) => player.id === reveal.winnerId).folded, false);

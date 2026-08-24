@@ -3,6 +3,10 @@ import { compareHandsWith235, createDeck, evaluateHand, shuffle } from './poker.
 export const MAX_PLAYERS = 10;
 export const CHIP_AMOUNTS = [100, 200, 300, 500];
 export const BET_LEVELS = [1, 2, 5, 10, 20, 50, 100, 200, 500];
+// 下注支付额:明牌按档位全额,闷牌按档位一半向上取整(如档位5,明付5,闷付3)
+export function betCost(stake, seen) {
+  return seen ? stake : Math.ceil(stake / 2);
+}
 export const TURN_MS = 30_000;
 const TRUSTEE_DELAY_MS = 300;
 
@@ -355,7 +359,7 @@ export function act(room, playerId, action, raiseTo) {
     // 加注规则:在当前档位上累加1~10注(整数),不再限定固定档位表
     if (!Number.isInteger(stake) || stake <= room.currentBet || stake > room.currentBet + 10) throw new Error('加注需在当前档位上累加1~10注');
   }
-  const cost = stake * (player.seen ? 2 : 1);
+  const cost = betCost(stake, player.seen);
   payExact(player, cost);
   recordLedger(room, player, action === 'raise' ? '加注' : '跟注', -cost, `${player.seen ? '明牌' : '闷牌'}，档位 ${stake}`);
   if (action === 'raise') room.currentBet = stake;
@@ -499,7 +503,7 @@ export function expireTurn(room, currentTime = now()) {
   if (!player || player.folded) return false;
   const timedOut = !player.autoPlay;
   player.autoPlay = true;
-  const cost = room.currentBet * (player.seen ? 2 : 1);
+  const cost = betCost(room.currentBet, player.seen);
   if (player.chips >= cost) {
     payExact(player, cost);
     recordLedger(room, player, '托管跟注', -cost, `${player.seen ? '明牌' : '闷牌'}，档位 ${room.currentBet}`);
@@ -590,7 +594,7 @@ function payExact(player, amount) {
 }
 
 function comparisonCost(room, player, target) {
-  return room.currentBet * (player.seen ? 2 : 1);
+  return betCost(room.currentBet, player.seen);
 }
 
 function cancelPendingComparison(room, reason) {
