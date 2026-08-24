@@ -8,7 +8,7 @@
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <title>三张牌</title>
   <link rel="preload" as="image" href="/assets/cards-standard/classic-navy-back-v3.jpg">
-  <link rel="stylesheet" href="/style.css?v=20260824d">
+  <link rel="stylesheet" href="/style.css?v=20260824e">
 </head>
 <body>
   <main id="app">
@@ -41,7 +41,7 @@
       <div class="room-bar">
         <div class="room-left"><button id="leave" class="icon-button">退出</button><span id="ownerName" class="owner-name">房主</span></div>
         <div class="room-title"><strong>房间 <span id="code"></span></strong><span id="roomStatus">等待开局</span></div>
-        <div class="room-right"><button id="muteButton" class="icon-button" title="音效开关">♪</button><button id="testSoundBar" class="icon-button sound-btn" title="测试音效">🔊</button><button id="invite" class="icon-button">邀请</button><button id="switchName" class="room-sub-button">改名</button></div>
+        <div class="room-right"><button id="muteButton" class="icon-button sound-toggle" title="音效开关">♪</button><button id="voiceButton" class="icon-button sound-toggle" title="人声开关">🗣</button><button id="invite" class="icon-button">邀请</button><button id="switchName" class="room-sub-button">改名</button></div>
       </div>
 
       <div id="tableStage" class="table-stage">
@@ -71,7 +71,6 @@
         <button id="trusteeButton">托管</button>
         <button id="chipsButton">筹码审批 <span id="requestBadge" class="badge hidden">0</span></button>
         <button id="logButton">牌局记录</button>
-        <button id="voiceButton" title="人声开关">🗣 人声</button>
         <button id="tableRulesButton">房规</button>
       </section>
     </section>
@@ -94,6 +93,6 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/app.js?v=20260824d"></script>
+  <script src="/app.js?v=20260824e"></script>
 </body>
 </html>

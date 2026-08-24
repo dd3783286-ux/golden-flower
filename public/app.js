@@ -121,7 +121,15 @@ let soundMuted = false;
 let voiceMuted = false;
 function playSound(name) {
   if (soundMuted) return; // 音效开关:关闭后只保留人声(TTS)
-  try { SOUNDS[name]?.(); } catch { /* 忽略 */ }
+  try {
+    const ctx = ensureAudio();
+    if (ctx && ctx.state === 'suspended') {
+      // 音频被挂起(iOS 常见):尝试唤醒后重播一次,唤醒失败等下次手势
+      ctx.resume().then(() => { try { SOUNDS[name]?.(); } catch { /* 忽略 */ } }).catch(() => { /* 忽略 */ });
+      return;
+    }
+    SOUNDS[name]?.();
+  } catch { /* 忽略 */ }
 }
 // 浏览器自动播放策略:必须在用户首次手势后解锁音频,否则音效被静音
 const unlockAudio = () => {
@@ -195,18 +203,36 @@ const VOICE_CLIPS = [
   ['弃牌', 'sounds/qipai.mp3']
 ];
 const voiceClipCache = {};
-// 人声去重:同一条文案 600ms 内不重复播(防机器人连招"跟注跟注跟注"刷屏);
-// 不同文案直接播,不再用时间窗丢弃(修复"有时有声音有时没有"——原来是连续播报被吞)
+// 人声去重:同一条文案 600ms 内不重复播(防机器人连招"跟注跟注跟注"刷屏)
 let lastSpeakText = '';
 let lastSpeakAt = 0;
+// 语音串行队列:一次只播一条,播完再播下一条。
+// 解决"看牌+牌型"(看牌!顺子!)等两条语音几乎同时触发时互相打断导致只响一条的问题
+const voiceQueue = [];
+let voicePlaying = false;
 function playVoiceClip(src) {
-  if (!voiceClipCache[src]) voiceClipCache[src] = new Audio(src);
-  // 用独立克隆实例播放,避免同一 Audio 对象快速连续 play 被中断
+  voiceQueue.push(src);
+  if (voiceQueue.length > 4) voiceQueue.shift(); // 队列上限,防堆积
+  pumpVoiceQueue();
+}
+function pumpVoiceQueue() {
+  if (voicePlaying || !voiceQueue.length) return;
+  voicePlaying = true;
+  const src = voiceQueue.shift();
   try {
-    const player = voiceClipCache[src].cloneNode(true);
+    const player = voiceClipCache[src] ? voiceClipCache[src].cloneNode(true) : new Audio(src);
+    if (!voiceClipCache[src]) voiceClipCache[src] = new Audio(src);
     player.volume = 1;
-    player.play().catch(() => { /* 忽略 */ });
-  } catch { /* 忽略 */ }
+    const done = () => { voicePlaying = false; pumpVoiceQueue(); };
+    player.onended = done;
+    player.onerror = done;
+    player.play().catch(done);
+    // 兜底:3秒强制播下一条(防止 onended 不触发导致队列卡死)
+    setTimeout(() => { if (voicePlaying) { voicePlaying = false; pumpVoiceQueue(); } }, 3_000);
+  } catch {
+    voicePlaying = false;
+    pumpVoiceQueue();
+  }
 }
 
 function speak(text) {
@@ -446,7 +472,6 @@ const testSoundHandler = () => {
 };
 $('#testSound').onclick = testSoundHandler;
 $('#testSoundLobby').onclick = testSoundHandler;
-$('#testSoundBar').onclick = testSoundHandler;
 
 // 音效开关:关掉合成音效,保留人声
 $('#muteButton').onclick = () => {
@@ -1434,6 +1459,7 @@ document.addEventListener('visibilitychange', () => {
   } else {
     document.documentElement.classList.add('is-visible');
     startCountdownTimer();
+    resumeAudioOnGesture(); // 切回前台立即恢复音频(iOS 后台会挂起 AudioContext)
   }
 });
 document.documentElement.classList.add('is-visible');

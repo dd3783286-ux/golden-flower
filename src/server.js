@@ -182,7 +182,7 @@ app.get('/api/me', (req, res) => res.json({
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // 前端版本号:每次发布时更新(与 index.html 的 ?v= 同步),供"新版本提示"检测
-const APP_VERSION = '20260824d';
+const APP_VERSION = '20260824e';
 app.get('/api/version', (_req, res) => res.json({ version: APP_VERSION }));
 
 app.post('/api/dev-login', limitSensitiveRequests, (req, res) => {

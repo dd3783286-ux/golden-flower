@@ -44,7 +44,7 @@
 .player-seat.me .avatar:after{content:none}.player-seat.me .avatar{border-color:#f5cb61;box-shadow:0 0 0 3px #f5cb6138,0 0 18px #e4aa3b88,0 5px 14px #000b,inset 0 1px #ffffff18}.player-seat.me .seat-name{color:#ffe17a;font-weight:800}.player-seat.me .seat-chips{border:1px solid #e9bf5655}
 .player-seat.top-seat{font-size:10px}.player-seat.top-seat .avatar{width:34px;height:34px;font-size:16px}.player-seat.top-seat .seat-name{margin-top:0;line-height:14px}.player-seat.top-seat .seat-chips{padding:0 5px;line-height:14px}.player-seat.top-seat .seat-badge{top:-5px;left:-7px;padding:0 4px}.player-seat.top-seat .turn-seconds{width:18px;height:18px;font-size:10px;right:-6px;bottom:-3px}
 .opponent-cards{position:absolute;z-index:3;display:flex;align-items:center;justify-content:center;gap:2px;width:46px;height:24px;pointer-events:none}.opponent-cards i{display:block;flex:0 0 12px;width:12px;height:20px;margin:0;border:2px solid #f4e7c9;border-radius:3px;background-color:#183765;background-image:linear-gradient(135deg,#e4bd59 12%,transparent 12%,transparent 50%,#e4bd59 50%,#e4bd59 62%,transparent 62%);background-size:7px 7px;box-shadow:0 2px 5px #000a,inset 0 0 0 1px #b9882d}.opponent-cards i:first-child{transform:rotate(-7deg)}.opponent-cards i:last-child{transform:rotate(7deg)}.seat-0 .opponent-cards,.seat-1 .opponent-cards,.seat-9 .opponent-cards{left:50%;top:calc(100% + 1px);transform:translateX(-50%)}.seat-2 .opponent-cards,.seat-3 .opponent-cards,.seat-4 .opponent-cards{right:calc(100% - 7px);top:50%;transform:translateY(-50%) rotate(-90deg)}.seat-6 .opponent-cards,.seat-7 .opponent-cards,.seat-8 .opponent-cards{left:calc(100% - 7px);top:50%;transform:translateY(-50%) rotate(90deg)}.opponent-cards.deal i{opacity:0;animation:opponentCardDeal .45s ease-out forwards;animation-delay:calc(var(--card-index,0)*.1s)}.opponent-cards.deal i:nth-child(2){animation-delay:.1s}.opponent-cards.deal i:nth-child(3){animation-delay:.2s}
-.utility-bar{grid-template-columns:repeat(5,1fr)}
+.utility-bar{grid-template-columns:repeat(4,1fr)}
 .utility-bar button.active{color:#ffd36c;background:#593b1538;border-radius:10px}
 @media(max-width:430px){.is-waiting .table-stage{min-height:370px;height:48vh}.is-waiting .waiting-bar{margin-top:8px;margin-bottom:8px}.utility-bar button{font-size:11px}}
 .ready-detail{margin:-3px 0 7px;color:#e7c66d;font-size:11px}
@@ -566,7 +566,7 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 }
 
 /* ===== 人声开关按钮(底部工具条6列) ===== */
-.utility-bar{grid-template-columns:repeat(5,1fr)}
+.utility-bar{grid-template-columns:repeat(4,1fr)}
 .utility-bar button#voiceButton.muted{color:#8a9b96;text-decoration:line-through;opacity:.6}
 @media(max-width:430px){.utility-bar button#voiceButton{font-size:10px}}
 
@@ -711,3 +711,9 @@ html:not(.is-visible) *{animation-play-state:paused!important;transition:none!im
   #turnCountdown,#turnClock,.thinking,.seat-spotlight,.turn-time{display:none!important}
   .turn-time{background:#168164!important}
 }
+
+/* ===== 顶部音效/人声开关:统一圆形大小 ===== */
+.room-right .sound-toggle{width:30px;height:30px;min-height:30px;padding:0;border-radius:50%;font-size:15px;display:inline-grid;place-items:center}
+.room-right .sound-toggle.muted{color:#8a9b96;text-decoration:line-through;opacity:.6}
+.room-right .sound-toggle.muted:after{content:"";position:absolute;width:16px;height:2px;background:#8a9b96;transform:rotate(-45deg)}
+@media(max-width:430px){.room-right .sound-toggle{width:28px;height:28px;min-height:28px;font-size:14px}}
