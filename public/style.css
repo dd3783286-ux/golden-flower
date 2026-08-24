@@ -698,8 +698,9 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .ready-buttons button:disabled{font-size:11px}
 
 /* ===== 性能优化:减少移动端渲染开销 ===== */
-/* 头像倒计时环:与桌面大环 turn-ring SVG 重复,conic-gradient 持续重绘很贵,直接隐藏保留大环 */
-#turnCountdown{display:none!important}
+/* 头像倒计时环:轮到的玩家红色醒目环+呼吸动画,其他玩家一眼看清该谁操作(conic进度环,1s低频更新) */
+#turnCountdown{display:block!important;z-index:2;background:conic-gradient(#ff2d35 calc(var(--progress)*1%),#ffffff16 0);border:2px solid #ff2d35;box-shadow:0 0 14px #ff2d35cc,0 0 5px #ff2d35,inset 0 0 6px #ff2d35aa;animation:turn-breathe 1.2s ease-in-out infinite}
+@keyframes turn-breathe{0%,100%{opacity:.8;filter:drop-shadow(0 0 2px #ff2d35)}50%{opacity:1;filter:drop-shadow(0 0 6px #ff2d35)}}
 /* 减少 .turn 状态头像的大范围模糊阴影(20px 模糊渲染代价大) */
 .player-seat.turn .avatar{box-shadow:0 0 0 3px #ffe27755,0 0 8px #ffd75d}
 /* 后台暂停:页面隐藏时(切应用/锁屏)整页静止,避免定时器+网络轮询持续耗电发热 */
