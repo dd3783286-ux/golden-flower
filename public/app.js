@@ -56,7 +56,9 @@ function showScreen(selector) {
 
 // ---- 音效系统:Web Audio 合成,无需外部音频文件 ----
 let audioCtx = null;
+let audioUnlocked = false; // 是否已获得用户手势解锁(iOS 必须手势后才能发声)
 function ensureAudio() {
+  if (!audioUnlocked) return null; // 未手势解锁不创建(避免iOS创建即挂起的僵尸上下文)
   try {
     if (!audioCtx) {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -134,6 +136,7 @@ function playSound(name) {
 }
 // 浏览器自动播放策略:必须在用户首次手势后解锁音频,否则音效被静音
 const unlockAudio = () => {
+  audioUnlocked = true; // 先标记已解锁,再创建上下文(手势中创建才允许发声)
   const ctx = ensureAudio();
   // 解锁成功立即播放一声"叮",用于确认音效通道已打开
   if (ctx && ctx.state === 'running') playSound('toast');
@@ -151,6 +154,7 @@ document.addEventListener('click', unlockAudio, { once: true });
 // 每次用户手势都尝试恢复音频:iOS 会不定期挂起 AudioContext(切后台/长时间无操作),
 // 且只有用户手势能 resume——这是"音效一会有一会没有"的根因
 const resumeAudioOnGesture = () => {
+  audioUnlocked = true;
   try {
     const ctx = ensureAudio();
     if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -223,9 +227,11 @@ function pumpVoiceQueue() {
   const src = voiceQueue.shift();
   clearTimeout(voiceFallbackTimer); // 只保留一个兜底计时器,避免旧timer误杀正在播的下一条
   try {
-    const player = voiceClipCache[src] ? voiceClipCache[src].cloneNode(true) : new Audio(src);
-    if (!voiceClipCache[src]) voiceClipCache[src] = new Audio(src);
+    // 复用同源 Audio 元素(串行队列保证同一时刻只有一个在播,复用安全)
+    // 避免每次 cloneNode 新建导致 iOS 长会话下 Audio 元素累积被拒播
+    const player = voiceClipCache[src] || (voiceClipCache[src] = new Audio(src));
     player.volume = 1;
+    player.currentTime = 0;
     const done = () => { voicePlaying = false; pumpVoiceQueue(); };
     player.onended = done;
     player.onerror = done;
