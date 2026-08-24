@@ -882,11 +882,15 @@ function renderActions(mine, turnPlayer) {
   const compareCostLabel = compareCosts.length && compareCosts.every((cost) => cost === compareCosts[0]) ? compareCosts[0] : '选择费用';
   const nextLevel = room.currentBet + 1;
   if (raiseOpen) {
-    // 加注选择:明牌"加N注"=档位+N、付档位;闷牌"闷N注"=闷牌支付额(在当前闷付上+N,档位自动2倍)
+    // 加注选择:明牌"加N注"=档位+N(取偶);闷牌"闷N注"=闷牌支付额(在当前闷付上+N,档位自动2N为偶数)
     const steps = [1, 2, 3, 4, 5, 6, 10];
     const curBlindPay = Math.ceil(room.currentBet / 2); // 当前闷牌应付额
     const options = mine.seen
-      ? steps.map((n) => ({ n, stake: room.currentBet + n, cost: room.currentBet + n })).filter((o) => o.cost <= mine.chips)
+      ? steps.map((n) => {
+          let stake = room.currentBet + n;
+          if (stake % 2 === 1) stake += 1; // 奇数档位取偶
+          return { n, stake, cost: stake };
+        }).filter((o) => o.cost <= mine.chips)
       : steps
           .map((n) => {
             const blindPay = curBlindPay + n; // 闷牌目标支付额

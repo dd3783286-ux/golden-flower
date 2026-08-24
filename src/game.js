@@ -358,8 +358,9 @@ export function act(room, playerId, action, raiseTo) {
   let stake = room.currentBet;
   if (action === 'raise') {
     stake = Number(raiseTo);
-    // 加注规则:档位(明牌价)必须高于当前档位(整数)。明牌加注到档位N付N;闷牌加注=闷牌支付额N对应档位2N,前端已换算
+    // 加注规则:档位(明牌价)必须高于当前档位(整数)且取偶(奇数自动+1,保证明=2×闷严格成立)
     if (!Number.isInteger(stake) || stake <= room.currentBet) throw new Error('加注需高于当前档位');
+    if (stake % 2 === 1) stake += 1;
   }
   const cost = betCost(stake, player.seen);
   payExact(player, cost);
