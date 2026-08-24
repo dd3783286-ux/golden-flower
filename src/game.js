@@ -9,8 +9,8 @@ export function betCost(stake, seen) {
 }
 export const TURN_MS = 30_000;
 const TRUSTEE_DELAY_MS = 300;
-// 档位(闷牌价)最小值:闷牌起步2注,明牌付4(底注baseBet独立,发牌前每人扣1)
-const MIN_BET = 2;
+// 档位(闷牌价)最小值:闷牌起步1注,明牌付2(底注baseBet独立,发牌前每人扣1)
+const MIN_BET = 1;
 
 const now = () => Date.now();
 const requestId = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -300,7 +300,7 @@ export function startGame(room, requesterId, random = Math.random) {
   const deck = shuffle(createDeck(), random);
   room.status = 'playing';
   room.pot = 0;
-  room.currentBet = MIN_BET; // 档位(闷牌价)初始2:闷牌起步2注,明牌付4
+  room.currentBet = MIN_BET; // 档位(闷牌价)初始1:闷牌起步1注,明牌付2
   room.round += 1;
   room.actionsInHand = 0;
   room.lastAction = null;
