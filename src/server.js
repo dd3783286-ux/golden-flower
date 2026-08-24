@@ -182,7 +182,7 @@ app.get('/api/me', (req, res) => res.json({
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // 前端版本号:每次发布时更新(与 index.html 的 ?v= 同步),供"新版本提示"检测
-const APP_VERSION = '20260824i';
+const APP_VERSION = '20260824j';
 app.get('/api/version', (_req, res) => res.json({ version: APP_VERSION }));
 
 app.post('/api/dev-login', limitSensitiveRequests, (req, res) => {
@@ -458,7 +458,25 @@ function joinSocket(socket, room, user) {
   broadcast(room);
 }
 
+// ---- 广播合并:250ms 窗口内同一房间多次变更合并为一次推送 ----
+// 机器人连招/多人操作时大幅减少客户端渲染次数(真人局操作间隔远超250ms,零感知)
+const broadcastQueue = new Map(); // code -> room(最新状态)
+let broadcastFlushTimer = null;
 function broadcast(room) {
+  broadcastQueue.set(room.code, room);
+  if (!broadcastFlushTimer) {
+    broadcastFlushTimer = setTimeout(() => {
+      broadcastFlushTimer = null;
+      const batch = [...broadcastQueue.values()];
+      broadcastQueue.clear();
+      for (const r of batch) pushRoom(r);
+    }, 250);
+    broadcastFlushTimer.unref?.();
+  }
+}
+function pushRoom(room) {
+  // 房间可能已删除/重建,只推仍存在的
+  if (rooms.get(room.code) !== room) return;
   scheduleRoom(room);
   scheduleSaveRooms();
   for (const socketId of io.sockets.adapter.rooms.get(room.code) || []) {
