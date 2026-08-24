@@ -117,7 +117,7 @@ test('闷牌付一半、明牌付全额，看牌后仍由本人操作', () => {
   assert.equal(room.turn, 0);
   const before = room.players[0].chips;
   act(room, '1', 'call');
-  assert.equal(room.players[0].chips, before - 1);
+  assert.equal(room.players[0].chips, before - 2); // 档位2:明牌付全额2
 });
 
 test('成熟下注档位只能向上选择', () => {
@@ -197,7 +197,7 @@ test('剩两名玩家时，闷牌可以开明牌并按1倍支付', () => {
   const challenger = room.players[room.turn];
   const target = room.players.find((player) => player.id !== challenger.id && !player.folded);
   assert.equal(publicRoom(room, challenger.id).canCompare, true);
-  const expectedCost = room.currentBet;
+  const expectedCost = Math.ceil(room.currentBet / 2); // 闷牌比牌费:档位一半向上取整
   const reveal = showdown(room, challenger.id, target.id);
   assert.equal(reveal.cost, expectedCost);
 });
@@ -364,7 +364,7 @@ test('30秒超时进入托管并自动跟注', () => {
   assert.equal(expireTurn(room, room.turnDeadline + 1), true);
   assert.equal(timedOut.autoPlay, true);
   assert.equal(timedOut.folded, false);
-  assert.equal(timedOut.chips, chipsBefore - room.currentBet);
+  assert.equal(timedOut.chips, chipsBefore - Math.ceil(room.currentBet / 2)); // 托管闷牌跟注:档位一半向上取整
   assert.ok(room.ledger.some((entry) => entry.playerId === timedOut.id && entry.type === '托管跟注'));
   assert.equal(room.status, 'playing');
 });
