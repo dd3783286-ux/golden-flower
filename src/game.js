@@ -3,14 +3,14 @@ import { compareHandsWith235, createDeck, evaluateHand, shuffle } from './poker.
 export const MAX_PLAYERS = 10;
 export const CHIP_AMOUNTS = [100, 200, 300, 500];
 export const BET_LEVELS = [1, 2, 5, 10, 20, 50, 100, 200, 500];
-// 下注支付额:档位即闷牌价,闷牌付档位全额,明牌付2倍(如档位5,闷付5,明付10)
+// 下注支付额:档位即明牌价,明牌付档位全额,闷牌付档位一半向上取整(如档位5,明付5,闷付3)
 export function betCost(stake, seen) {
-  return seen ? stake * 2 : stake;
+  return seen ? stake : Math.ceil(stake / 2);
 }
 export const TURN_MS = 30_000;
 const TRUSTEE_DELAY_MS = 300;
-// 档位(闷牌价)最小值:闷牌起步1注,明牌付2(底注baseBet独立,发牌前每人扣1)
-const MIN_BET = 1;
+// 档位(明牌价)最小值:明牌起步2注,闷牌付1(底注baseBet独立,发牌前每人扣1)
+const MIN_BET = 2;
 
 const now = () => Date.now();
 const requestId = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -300,7 +300,7 @@ export function startGame(room, requesterId, random = Math.random) {
   const deck = shuffle(createDeck(), random);
   room.status = 'playing';
   room.pot = 0;
-  room.currentBet = MIN_BET; // 档位(闷牌价)初始1:闷牌起步1注,明牌付2
+  room.currentBet = MIN_BET; // 档位(明牌价)初始2:明牌起步2注,闷牌付1
   room.round += 1;
   room.actionsInHand = 0;
   room.lastAction = null;
@@ -358,7 +358,7 @@ export function act(room, playerId, action, raiseTo) {
   let stake = room.currentBet;
   if (action === 'raise') {
     stake = Number(raiseTo);
-    // 加注规则:档位(闷牌价)必须高于当前档位(整数)。明牌加注到档位N付2N;闷牌加注到档位N付N,前端已换算
+    // 加注规则:档位(明牌价)必须高于当前档位(整数)。明牌加注到档位N付N;闷牌加注=闷牌支付额N对应档位2N,前端已换算
     if (!Number.isInteger(stake) || stake <= room.currentBet) throw new Error('加注需高于当前档位');
   }
   const cost = betCost(stake, player.seen);
@@ -383,7 +383,7 @@ export function showdown(room, playerId, targetId) {
   if (!canCompare(room)) throw new Error('至少完成一轮下注后才能比牌');
   const target = room.players.find((candidate) => candidate.id === targetId && !candidate.folded && candidate.id !== playerId);
   if (!target) throw new Error('请选择仍在牌局中的对手');
-  // 比牌费只按发起者状态计算：闷牌付档位、明牌付2倍，不因对手状态再次翻倍。
+  // 比牌费只按发起者状态计算：闷牌付档位一半、明牌付档位全额，不因对手状态再次翻倍。
   const cost = comparisonCost(room, player, target);
   if (player.chips < cost) throw new Error(`筹码不足，需要 ${cost}`);
   if (alive.length > 2 && player.seen && target.seen) {
