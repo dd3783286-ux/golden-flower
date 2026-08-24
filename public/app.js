@@ -11,6 +11,7 @@ let lastTurnKey = '';
 let dismissedRevealId = null;
 let lastSeenRound = 0;
 let lastSeenState = false;
+let handSpokenThisRound = false; // 本局是否已播报过自己的牌型(看牌时播一次)
 let visualStateRound = 0;
 let previousPlayerVisualStates = new Map();
 let lastTableActionId = null;
@@ -68,7 +69,7 @@ function ensureAudio() {
 }
 function tone(freq, dur, type = 'sine', vol = 0.12, when = 0) {
   const ctx = ensureAudio();
-  if (!ctx || ctx.state !== 'running') return; // 挂起中不播,等下次手势恢复
+  if (!ctx) return;
   try {
     const t = ctx.currentTime + when;
     const osc = ctx.createOscillator();
@@ -210,6 +211,7 @@ let lastSpeakAt = 0;
 // 解决"看牌+牌型"(看牌!顺子!)等两条语音几乎同时触发时互相打断导致只响一条的问题
 const voiceQueue = [];
 let voicePlaying = false;
+let voiceFallbackTimer = null;
 function playVoiceClip(src) {
   voiceQueue.push(src);
   if (voiceQueue.length > 4) voiceQueue.shift(); // 队列上限,防堆积
@@ -219,6 +221,7 @@ function pumpVoiceQueue() {
   if (voicePlaying || !voiceQueue.length) return;
   voicePlaying = true;
   const src = voiceQueue.shift();
+  clearTimeout(voiceFallbackTimer); // 只保留一个兜底计时器,避免旧timer误杀正在播的下一条
   try {
     const player = voiceClipCache[src] ? voiceClipCache[src].cloneNode(true) : new Audio(src);
     if (!voiceClipCache[src]) voiceClipCache[src] = new Audio(src);
@@ -227,8 +230,8 @@ function pumpVoiceQueue() {
     player.onended = done;
     player.onerror = done;
     player.play().catch(done);
-    // 兜底:3秒强制播下一条(防止 onended 不触发导致队列卡死)
-    setTimeout(() => { if (voicePlaying) { voicePlaying = false; pumpVoiceQueue(); } }, 3_000);
+    // 兜底:5秒强制播下一条(防止 onended 不触发导致队列卡死)
+    voiceFallbackTimer = setTimeout(() => { if (voicePlaying) { voicePlaying = false; pumpVoiceQueue(); } }, 5_000);
   } catch {
     voicePlaying = false;
     pumpVoiceQueue();
@@ -749,10 +752,15 @@ function renderHand(mine) {
   if (room.round !== lastSeenRound) {
     lastSeenRound = room.round;
     lastSeenState = false;
+    handSpokenThisRound = false;
   }
   const revealNow = room.status === 'playing' && Boolean(mine?.seen) && !lastSeenState;
   if (mine?.seen) lastSeenState = true;
-  if (revealNow && mine?.hand?.length === 3) speak(`${evaluateHandTypeName(mine.hand)}!`);
+  // 看牌牌型播报:独立判定(本局内看过牌且从未播报过就播一次),不依赖 revealNow 的动画状态
+  if (mine?.seen && mine.hand?.length === 3 && !handSpokenThisRound) {
+    handSpokenThisRound = true;
+    speak(`${evaluateHandTypeName(mine.hand)}!`);
+  }
   const cards = mine?.hand || [];
   $('#cards').classList.toggle('revealed', Boolean(mine?.seen));
   if (revealNow) {
