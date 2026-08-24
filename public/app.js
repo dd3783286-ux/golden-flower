@@ -313,8 +313,8 @@ function maybeTour() {
 }
 
 function viewerId() { return room?.viewerId || me?.id; }
-// 下注支付额:明牌按档位全额,闷牌按档位一半向上取整
-const betCost = (stake, seen) => (seen ? stake : Math.ceil(stake / 2));
+// 下注支付额:档位即闷牌价,闷牌付档位全额,明牌付2倍
+const betCost = (stake, seen) => (seen ? stake * 2 : stake);
 function localCompareCost(player, target) {
   return betCost(room.currentBet, player?.seen);
 }
@@ -800,7 +800,7 @@ function renderHand(mine) {
   }
   if (room.status !== 'playing') $('#handState').textContent = mine?.ready ? '已准备，等待房主开局' : '准备后等待开局';
   else if (mine?.folded) $('#handState').textContent = mine.eliminatedByCompare ? '本局已比牌淘汰' : '本局已弃牌';
-  else $('#handState').textContent = mine?.seen ? `明牌 · 跟注 ${room.currentBet}` : `闷牌 · 跟注 ${Math.ceil(room.currentBet / 2)}`;
+  else $('#handState').textContent = mine?.seen ? `明牌 · 跟注 ${room.currentBet * 2}` : `闷牌 · 跟注 ${room.currentBet}`;
   $('#myStats').innerHTML = mine ? `<i class="mini-chip" aria-hidden="true"></i> ${mine.chips} · 本局已下 ${mine.bet}` : '';
 }
 
@@ -882,17 +882,14 @@ function renderActions(mine, turnPlayer) {
   const compareCostLabel = compareCosts.length && compareCosts.every((cost) => cost === compareCosts[0]) ? compareCosts[0] : '选择费用';
   const nextLevel = room.currentBet + 1;
   if (raiseOpen) {
-    // 加注选择:明牌"加N注"=档位+N;闷牌"闷N注"=闷牌支付额(在当前闷付上+N,档位自动2倍)
+    // 加注选择:档位即闷牌价,闷牌加注到档位N付N,明牌加注到档位N付2N
     const steps = [1, 2, 3, 4, 5, 6, 10];
-    const curBlindPay = Math.ceil(room.currentBet / 2); // 当前闷牌应付额
-    const options = mine.seen
-      ? steps.map((n) => ({ n, stake: room.currentBet + n, cost: room.currentBet + n })).filter((o) => o.cost <= mine.chips)
-      : steps
-          .map((n) => {
-            const blindPay = curBlindPay + n; // 闷牌目标支付额
-            return { n: blindPay, stake: 2 * blindPay, cost: blindPay };
-          })
-          .filter((o) => o.cost <= mine.chips);
+    const options = steps
+      .map((n) => {
+        const stake = room.currentBet + n;
+        return { n, stake, cost: mine.seen ? stake * 2 : stake };
+      })
+      .filter((o) => o.cost <= mine.chips);
     $('#actions').classList.add('raise-picker');
     $('#actions').innerHTML = `<button data-raise-back class="raise-back">← 返回</button>${options.map((option) => `<button data-raise-level="${option.stake}" class="main-action raise-option"><b>${mine.seen ? `加${option.n}注` : `闷${option.n}注`}</b><small>档位${option.stake} · 你付${option.cost}</small></button>`).join('')}`;
     $('#actions').querySelector('[data-raise-back]').onclick = () => { raiseOpen = false; renderActions(mine, turnPlayer); };
@@ -1144,7 +1141,7 @@ function showLedger(selectedPlayer = 'all', records = recordCache || {}) {
 $('#rulesButton').onclick = showRules;
 $('#tableRulesButton').onclick = showRules;
 function showRules() {
-  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，发牌前每人自动放入筹码池，不计入跟注。</li><li>下注按当前档位（起步2注）：明牌按档位全额支付（最低2注），闷牌按档位一半向上取整（如档位5，明牌付5，闷牌付3）；看牌免费且不换人。</li><li>加注：明牌点“加N注”为档位+N（如档位5加3注后为8）；闷牌点“闷N注”为你付N、明牌对应付2N（如闷2注，明牌档位到4）。</li><li>完成第一轮下注后可以比牌。多人局中，需要所有未弃牌玩家都看牌后才能主动比牌；剩两名玩家时，闷牌玩家可花当前档位的一半开明牌，明牌玩家可花当前档位看闷牌。比牌费只按发起者状态计算，不因对手状态改变。多人仍在局中时，被比牌者有10秒同意或拒绝；同意后才扣费并比牌，拒绝或超时不扣费，仍由发起者继续操作。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；牌小者淘汰，牌大者留在桌上继续游戏；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；接电话/断网10分钟内回来正常，离线期间自动托管，超10分钟移出房间。</li><li>牌局中筹码不足时可以紧急申请筹码，房主批准后立即到账继续跟注；房主自己申请自动通过。</li></ol>`);
+  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，发牌前每人自动放入筹码池，不计入跟注。</li><li>下注按当前档位（起步2注，档位即闷牌价）：闷牌按档位支付（最低2注），明牌付档位的2倍（如档位5，闷牌付5，明牌付10）；看牌免费且不换人。</li><li>加注：档位即闷牌价，闷牌点“闷N注”为档位+N、付N；明牌点“加N注”为档位+N、付2N（如档位5加3注后为8，闷牌付8、明牌付16）。</li><li>完成第一轮下注后可以比牌。多人局中，需要所有未弃牌玩家都看牌后才能主动比牌；剩两名玩家时，闷牌玩家可花当前档位开明牌，明牌玩家可花当前档位的2倍看闷牌。比牌费只按发起者状态计算，不因对手状态改变。多人仍在局中时，被比牌者有10秒同意或拒绝；同意后才扣费并比牌，拒绝或超时不扣费，仍由发起者继续操作。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；牌小者淘汰，牌大者留在桌上继续游戏；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；接电话/断网10分钟内回来正常，离线期间自动托管，超10分钟移出房间。</li><li>牌局中筹码不足时可以紧急申请筹码，房主批准后立即到账继续跟注；房主自己申请自动通过。</li></ol>`);
 }
 
 // 移除机器人(房主,等待阶段):事件委托,座位上的 × 按钮
