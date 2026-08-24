@@ -882,13 +882,15 @@ function renderActions(mine, turnPlayer) {
   const compareCostLabel = compareCosts.length && compareCosts.every((cost) => cost === compareCosts[0]) ? compareCosts[0] : '选择费用';
   const nextLevel = room.currentBet + 1;
   if (raiseOpen) {
-    // 加注选择:在当前档位上累加1~6注或10注(支付按明/闷:明牌付档位,闷牌付一半向上取整)
+    // 加注选择:明牌=档位+N;闷牌=闷牌支付额N(档位自动2N)。支付:明牌付档位,闷牌付一半向上取整
     const steps = [1, 2, 3, 4, 5, 6, 10];
-    const options = steps
-      .map((n) => ({ n, stake: room.currentBet + n, cost: betCost(room.currentBet + n, mine.seen) }))
-      .filter((option) => mine.chips >= option.cost);
+    const options = mine.seen
+      ? steps.map((n) => ({ n, stake: room.currentBet + n, cost: room.currentBet + n })).filter((o) => o.cost <= mine.chips)
+      : steps
+          .map((n) => ({ n, stake: 2 * n, cost: n }))
+          .filter((o) => o.stake > room.currentBet && o.cost <= mine.chips);
     $('#actions').classList.add('raise-picker');
-    $('#actions').innerHTML = `<button data-raise-back>返回</button>${options.map((option) => `<button data-raise-level="${option.stake}" class="main-action">加${option.n}注<small>档位${option.stake}·付${option.cost}</small></button>`).join('')}`;
+    $('#actions').innerHTML = `<button data-raise-back>返回</button>${options.map((option) => `<button data-raise-level="${option.stake}" class="main-action">${mine.seen ? `加${option.n}注` : `闷${option.n}注`}<small>档位${option.stake}·你付${option.cost}</small></button>`).join('')}`;
     $('#actions').querySelector('[data-raise-back]').onclick = () => { raiseOpen = false; renderActions(mine, turnPlayer); };
     $('#actions').querySelectorAll('[data-raise-level]').forEach((button) => button.onclick = () => {
       const level = Number(button.dataset.raiseLevel);
@@ -1138,7 +1140,7 @@ function showLedger(selectedPlayer = 'all', records = recordCache || {}) {
 $('#rulesButton').onclick = showRules;
 $('#tableRulesButton').onclick = showRules;
 function showRules() {
-  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，发牌前每人自动放入筹码池，不计入跟注。</li><li>下注按当前档位：明牌按档位全额支付，闷牌按档位一半向上取整（如档位5，明牌付5，闷牌付3）；看牌免费且不换人。</li><li>加注为在当前档位基础上累加：加1~6注或加10注（例如当前档位5，加3注后为8）。</li><li>完成第一轮下注后可以比牌。多人局中，需要所有未弃牌玩家都看牌后才能主动比牌；剩两名玩家时，闷牌玩家可花当前档位的一半开明牌，明牌玩家可花当前档位看闷牌。比牌费只按发起者状态计算，不因对手状态改变。多人仍在局中时，被比牌者有10秒同意或拒绝；同意后才扣费并比牌，拒绝或超时不扣费，仍由发起者继续操作。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；牌小者淘汰，牌大者留在桌上继续游戏；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；接电话/断网10分钟内回来正常，离线期间自动托管，超10分钟移出房间。</li><li>牌局中筹码不足时可以紧急申请筹码，房主批准后立即到账继续跟注；房主自己申请自动通过。</li></ol>`);
+  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，发牌前每人自动放入筹码池，不计入跟注。</li><li>下注按当前档位：明牌按档位全额支付，闷牌按档位一半向上取整（如档位5，明牌付5，闷牌付3）；看牌免费且不换人。</li><li>加注：明牌点“加N注”为档位+N（如档位5加3注后为8）；闷牌点“闷N注”为你付N、明牌对应付2N（如闷2注，明牌档位到4）。</li><li>完成第一轮下注后可以比牌。多人局中，需要所有未弃牌玩家都看牌后才能主动比牌；剩两名玩家时，闷牌玩家可花当前档位的一半开明牌，明牌玩家可花当前档位看闷牌。比牌费只按发起者状态计算，不因对手状态改变。多人仍在局中时，被比牌者有10秒同意或拒绝；同意后才扣费并比牌，拒绝或超时不扣费，仍由发起者继续操作。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；牌小者淘汰，牌大者留在桌上继续游戏；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；接电话/断网10分钟内回来正常，离线期间自动托管，超10分钟移出房间。</li><li>牌局中筹码不足时可以紧急申请筹码，房主批准后立即到账继续跟注；房主自己申请自动通过。</li></ol>`);
 }
 
 // 移除机器人(房主,等待阶段):事件委托,座位上的 × 按钮
