@@ -882,13 +882,17 @@ function renderActions(mine, turnPlayer) {
   const compareCostLabel = compareCosts.length && compareCosts.every((cost) => cost === compareCosts[0]) ? compareCosts[0] : '选择费用';
   const nextLevel = room.currentBet + 1;
   if (raiseOpen) {
-    // 加注选择:明牌=档位+N;闷牌=闷牌支付额N(档位自动2N)。支付:明牌付档位,闷牌付一半向上取整
+    // 加注选择:明牌"加N注"=档位+N;闷牌"闷N注"=闷牌支付额(在当前闷付上+N,档位自动2倍)
     const steps = [1, 2, 3, 4, 5, 6, 10];
+    const curBlindPay = Math.ceil(room.currentBet / 2); // 当前闷牌应付额
     const options = mine.seen
       ? steps.map((n) => ({ n, stake: room.currentBet + n, cost: room.currentBet + n })).filter((o) => o.cost <= mine.chips)
       : steps
-          .map((n) => ({ n, stake: 2 * n, cost: n }))
-          .filter((o) => o.stake > room.currentBet && o.cost <= mine.chips);
+          .map((n) => {
+            const blindPay = curBlindPay + n; // 闷牌目标支付额
+            return { n: blindPay, stake: 2 * blindPay, cost: blindPay };
+          })
+          .filter((o) => o.cost <= mine.chips);
     $('#actions').classList.add('raise-picker');
     $('#actions').innerHTML = `<button data-raise-back class="raise-back">← 返回</button>${options.map((option) => `<button data-raise-level="${option.stake}" class="main-action raise-option"><b>${mine.seen ? `加${option.n}注` : `闷${option.n}注`}</b><small>档位${option.stake} · 你付${option.cost}</small></button>`).join('')}`;
     $('#actions').querySelector('[data-raise-back]').onclick = () => { raiseOpen = false; renderActions(mine, turnPlayer); };
