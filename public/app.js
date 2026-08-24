@@ -890,7 +890,7 @@ function renderActions(mine, turnPlayer) {
           .map((n) => ({ n, stake: 2 * n, cost: n }))
           .filter((o) => o.stake > room.currentBet && o.cost <= mine.chips);
     $('#actions').classList.add('raise-picker');
-    $('#actions').innerHTML = `<button data-raise-back>返回</button>${options.map((option) => `<button data-raise-level="${option.stake}" class="main-action">${mine.seen ? `加${option.n}注` : `闷${option.n}注`}<small>档位${option.stake}·你付${option.cost}</small></button>`).join('')}`;
+    $('#actions').innerHTML = `<button data-raise-back class="raise-back">← 返回</button>${options.map((option) => `<button data-raise-level="${option.stake}" class="main-action raise-option"><b>${mine.seen ? `加${option.n}注` : `闷${option.n}注`}</b><small>档位${option.stake} · 你付${option.cost}</small></button>`).join('')}`;
     $('#actions').querySelector('[data-raise-back]').onclick = () => { raiseOpen = false; renderActions(mine, turnPlayer); };
     $('#actions').querySelectorAll('[data-raise-level]').forEach((button) => button.onclick = () => {
       const level = Number(button.dataset.raiseLevel);
