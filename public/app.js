@@ -399,7 +399,7 @@ function connect() {
     setNetwork(false);
     // 断线警告:30秒会被移出,20秒时提醒
     clearTimeout(offlineWarnTimer);
-    offlineWarnTimer = setTimeout(() => toast('⚠️ 网络断开,还有约10秒将被移出房间,请检查网络'), 20_000);
+    offlineWarnTimer = setTimeout(() => toast('⚠️ 网络断开,还有约1分钟将被移出房间,请尽快回来'), 9 * 60_000);
   });
   socket.on('connect_error', () => setNetwork(false));
   socket.on('room', (state) => {
@@ -879,11 +879,15 @@ function renderActions(mine, turnPlayer) {
   const compareCosts = compareTargets.map((target) => Number(room.compareCosts?.[target.id]) || localCompareCost(mine, target));
   const affordableCompare = compareCosts.some((cost) => mine.chips >= cost);
   const compareCostLabel = compareCosts.length && compareCosts.every((cost) => cost === compareCosts[0]) ? compareCosts[0] : '选择费用';
-  const nextLevel = BET_LEVELS.find((level) => level > room.currentBet);
+  const nextLevel = room.currentBet + 1;
   if (raiseOpen) {
-    const levels = BET_LEVELS.filter((level) => level > room.currentBet && mine.chips >= level * factor);
+    // 加注选择:在当前档位上累加1~6注或10注
+    const steps = [1, 2, 3, 4, 5, 6, 10];
+    const options = steps
+      .map((n) => ({ n, stake: room.currentBet + n, cost: (room.currentBet + n) * factor }))
+      .filter((option) => mine.chips >= option.cost);
     $('#actions').classList.add('raise-picker');
-    $('#actions').innerHTML = `<button data-raise-back>返回</button>${levels.map((level) => `<button data-raise-level="${level}" class="main-action">加到${level}<small>支付${level * factor}</small></button>`).join('')}`;
+    $('#actions').innerHTML = `<button data-raise-back>返回</button>${options.map((option) => `<button data-raise-level="${option.stake}" class="main-action">加${option.n}注<small>档位${option.stake}·付${option.cost}</small></button>`).join('')}`;
     $('#actions').querySelector('[data-raise-back]').onclick = () => { raiseOpen = false; renderActions(mine, turnPlayer); };
     $('#actions').querySelectorAll('[data-raise-level]').forEach((button) => button.onclick = () => {
       const level = Number(button.dataset.raiseLevel);
@@ -1133,7 +1137,7 @@ function showLedger(selectedPlayer = 'all', records = recordCache || {}) {
 $('#rulesButton').onclick = showRules;
 $('#tableRulesButton').onclick = showRules;
 function showRules() {
-  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，第一局随机庄家，以后顺时针轮庄，庄家下家先操作。</li><li>闷牌按当前档位支付；看牌免费且不换人，看牌后下注为2倍。</li><li>加注档位：1、2、5、10、20、50、100、200、500。</li><li>完成第一轮下注后可以比牌。多人局中，需要所有未弃牌玩家都看牌后才能主动比牌；剩两名玩家时，闷牌玩家可花当前档位开明牌（1倍），明牌玩家可花2倍看闷牌。比牌费只按发起者状态计算，不因对手状态再次翻倍。多人仍在局中时，被比牌者有10秒同意或拒绝；同意后才扣费并比牌，拒绝或超时不扣费，仍由发起者继续操作。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；牌小者淘汰，牌大者留在桌上继续游戏；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；玩家离线时，每轮仍保留30秒操作时间，筹码不足时自动弃牌。</li><li>牌局中筹码不足时可以紧急申请筹码，房主批准后立即到账继续跟注；房主自己申请自动通过。</li></ol>`);
+  showSheet(`<h3>房间规则</h3><ol class="rules-list"><li>每局底注1，第一局随机庄家，以后顺时针轮庄，庄家下家先操作。</li><li>闷牌按当前档位支付；看牌免费且不换人，看牌后下注为2倍。</li><li>加注为在当前档位基础上累加：加1~6注或加10注（例如当前档位5，加3注后为8）。</li><li>完成第一轮下注后可以比牌。多人局中，需要所有未弃牌玩家都看牌后才能主动比牌；剩两名玩家时，闷牌玩家可花当前档位开明牌（1倍），明牌玩家可花2倍看闷牌。比牌费只按发起者状态计算，不因对手状态再次翻倍。多人仍在局中时，被比牌者有10秒同意或拒绝；同意后才扣费并比牌，拒绝或超时不扣费，仍由发起者继续操作。</li><li>比牌牌面仅比牌双方可见，其他玩家只能看到胜负结果；牌小者淘汰，牌大者留在桌上继续游戏；普通弃牌不公开。</li><li>牌型：豹子＞顺金＞金花＞顺子＞对子＞散牌。A23为最小顺子，花色不分大小。</li><li>非同花的235只在遇到豹子时获胜；完全同牌时主动比牌者输。</li><li>每次操作限时30秒。超时后进入托管自动跟注；接电话/断网10分钟内回来正常，离线期间自动托管，超10分钟移出房间。</li><li>牌局中筹码不足时可以紧急申请筹码，房主批准后立即到账继续跟注；房主自己申请自动通过。</li></ol>`);
 }
 
 // 移除机器人(房主,等待阶段):事件委托,座位上的 × 按钮

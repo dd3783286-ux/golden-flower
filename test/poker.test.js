@@ -127,7 +127,7 @@ test('成熟下注档位只能向上选择', () => {
   assert.deepEqual({ type: room.lastAction.type, stake: room.lastAction.stake }, { type: 'raise', stake: 5 });
   assert.equal(room.currentBet, 5);
   assert.ok(BET_LEVELS.includes(room.currentBet));
-  assert.throws(() => act(room, '1', 'raise', 2), /高于当前档位/);
+  assert.throws(() => act(room, '1', 'raise', 2), /累加1~10注/);
 });
 
 test('完成首轮下注且所有人都看牌后才能比牌，只有比牌双方能看到牌面', () => {

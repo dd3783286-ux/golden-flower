@@ -182,7 +182,7 @@ app.get('/api/me', (req, res) => res.json({
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // 前端版本号:每次发布时更新(与 index.html 的 ?v= 同步),供"新版本提示"检测
-const APP_VERSION = '20260824j';
+const APP_VERSION = '20260824k';
 app.get('/api/version', (_req, res) => res.json({ version: APP_VERSION }));
 
 app.post('/api/dev-login', limitSensitiveRequests, (req, res) => {
@@ -578,8 +578,8 @@ function decideBot(room, bot) {
   }
   if (rand > 0.92 && room.actionsInHand >= active.length * 4) return act(room, bot.id, 'fold');
   if (rand > 0.72 && room.currentBet < 100) {
-    const nextLevel = BET_LEVELS.find((level) => level > room.currentBet);
-    if (nextLevel && bot.chips >= nextLevel * (bot.seen ? 2 : 1)) return act(room, bot.id, 'raise', nextLevel);
+    const nextLevel = room.currentBet + 1 + Math.floor(Math.random() * 6); // 加1~6注
+    if (bot.chips >= nextLevel * (bot.seen ? 2 : 1)) return act(room, bot.id, 'raise', nextLevel);
   }
   return act(room, bot.id, 'call');
 }
@@ -680,7 +680,7 @@ function loadRooms() {
 }
 
 const cleanupTimer = setInterval(() => {
-  const cutoff = Date.now() - 30 * 60 * 1000;
+  const cutoff = Date.now() - 15 * 60 * 1000; // 15 分钟
   for (const room of rooms.values()) {
     // 无真人玩家在线(全是机器人或已离线)的房间视为空房,超时后清理
     const allOffline = room.players.every((player) => !player.connected || player.bot);
@@ -689,7 +689,7 @@ const cleanupTimer = setInterval(() => {
   for (const [key, bucket] of requestBuckets) {
     if (Date.now() - bucket.startedAt > 10 * 60_000) requestBuckets.delete(key);
   }
-}, 10 * 60 * 1000);
+}, 5 * 60 * 1000);
 cleanupTimer.unref?.();
 
 // 机器人自动补筹码:等待阶段补到能准备,牌局中低于50也自动补(真人必须走房主审批)
@@ -723,9 +723,10 @@ const chipAutoTimer = setInterval(() => {
 }, 1_500);
 chipAutoTimer.unref?.();
 
-// 真人离线自动清理:非机器人玩家离线超过30秒自动移出房间(牌局中则自动弃牌,本局结束移除)
+// 真人离线自动清理:接电话/短暂断网 10 分钟内回来正常;超过 10 分钟移出房间(牌局中则自动弃牌,本局结束移除)
+const OFFLINE_KICK_MS = 10 * 60 * 1000; // 10 分钟
 const offlineKickTimer = setInterval(() => {
-  const cutoff = Date.now() - 30_000;
+  const cutoff = Date.now() - OFFLINE_KICK_MS;
   for (const room of rooms.values()) {
     const kickIds = room.players
       .filter((player) => !player.bot && !player.connected && (player.lastSeenAt || 0) <= cutoff)

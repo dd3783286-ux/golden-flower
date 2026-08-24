@@ -352,7 +352,8 @@ export function act(room, playerId, action, raiseTo) {
   let stake = room.currentBet;
   if (action === 'raise') {
     stake = Number(raiseTo);
-    if (!BET_LEVELS.includes(stake) || stake <= room.currentBet) throw new Error('请选择高于当前档位的有效加注金额');
+    // 加注规则:在当前档位上累加1~10注(整数),不再限定固定档位表
+    if (!Number.isInteger(stake) || stake <= room.currentBet || stake > room.currentBet + 10) throw new Error('加注需在当前档位上累加1~10注');
   }
   const cost = stake * (player.seen ? 2 : 1);
   payExact(player, cost);
