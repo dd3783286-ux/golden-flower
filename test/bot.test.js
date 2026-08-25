@@ -107,9 +107,9 @@ test('烂单张+便宜跟注+多人:胜率衰减,弃牌', () => {
   assert.equal(d.action, 'fold');
 });
 
-test('诈唬性格差异:同场景激进偷鸡,保守弃牌', () => {
+test('诈唬性格差异:同场景激进出手,保守弃牌', () => {
   const weakCtx = base({
-    hand: offSuit([2, 4, 7]), currentBet: 10, pot: 30,
+    hand: offSuit([2, 4, 7]), currentBet: 20, pot: 30,
     opponents: [{ bet: 2, seen: true }]
   });
   const tight = chooseBotAction({ ...weakCtx, personality: P.保守 }, always(0.1));
@@ -165,4 +165,26 @@ test('性格:保守牌风跟注门槛更高(同样边缘牌,保守弃、激进�
   const loose = chooseBotAction({ ...weakCtx, personality: P.激进 }, always(0.5));
   assert.equal(tight.action, 'fold');
   assert.equal(loose.action, 'call');
+});
+
+test('读人:对手刚加注(威胁)时,豹子不急着比牌,改加注钓鱼', () => {
+  const d = chooseBotAction(base({ hand: suited([7, 7, 7]), threat: true }), always(0.1));
+  assert.equal(d.action, 'raise'); // 0.1<0.4 但 threat → 不清人
+  assert.ok(d.raiseTo > 2);
+});
+
+test('读人:对手刚加注(威胁)时,边缘牌力收紧弃牌', () => {
+  const d = chooseBotAction(base({
+    hand: offSuit([8, 8, 2]), currentBet: 50, pot: 50,
+    opponents: [{ bet: 12, seen: true }], threat: true, personality: P.均衡
+  }), always(0.5));
+  assert.equal(d.action, 'fold');
+});
+
+test('读人:无威胁时同等边缘牌,赔率够则跟注', () => {
+  const d = chooseBotAction(base({
+    hand: offSuit([8, 8, 2]), currentBet: 50, pot: 50,
+    opponents: [{ bet: 12, seen: true }], personality: P.均衡
+  }), always(0.5));
+  assert.equal(d.action, 'call');
 });

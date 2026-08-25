@@ -572,7 +572,9 @@ function decideBot(room, bot) {
     opponents: opponents.map((o) => ({ bet: o.bet, seen: o.seen })),
     canCompare,
     compareTargetIds: opponents.filter((o) => compareTargetIds.includes(o.id)).map((o) => o.id),
-    personality: botPersonality(bot.name)
+    personality: botPersonality(bot.name),
+    // 读人:最近一次行动是否是对手的加注(威胁信号→强牌可能真大)
+    threat: Boolean(room.lastAction?.type === 'raise' && room.lastAction.playerId !== bot.id && !room.players.find((p) => p.id === room.lastAction.playerId)?.folded)
   };
   const decision = chooseBotAction(ctx);
   console.log(`[bot] ${bot.name}(${ctx.personality.tag}) ${bot.seen ? '明' : '闷'} 档位${room.currentBet} → ${decision.action}${decision.raiseTo ? `至${decision.raiseTo}` : ''}${decision.targetId ? `(${room.players.find((p) => p.id === decision.targetId)?.name})` : ''}`);

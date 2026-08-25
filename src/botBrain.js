@@ -1,13 +1,14 @@
 // src/botBrain.js
-// 机器人智能决策引擎:牌力评估 + 底池赔率 + 对手读牌 + 诈唬 + 性格差异
+// 机器人智能决策引擎:牌力评估 + 底池赔率 + 对手读牌(含加注威胁) + 诈唬 + 性格差异
 // 设计原则:
 //  1. 闷牌时绝不使用手牌信息(不透视),靠"半价跟注"赔率优势决策
-//  2. 看牌后按牌型强度分级行动:超强牌价值最大化 / 强牌压榨 / 中牌控制 / 弱牌弃+小概率偷鸡
+//  2. 看牌后按牌型强度分级行动:超强牌价值最大化(钓鱼) / 强牌压榨 / 中牌控制 / 弱牌弃+小概率偷鸡
 //  3. 用底池赔率(需要胜率)与估算胜率对比决定跟/弃,严格比真人会算
-//  4. 每个机器人有性格(保守/激进/均衡),牌风不同
+//  4. 读人:对手刚加注(威胁) → 收紧自己或强牌钓鱼;对手整体投注凶 → 牌可能真大
+//  5. 每个机器人有性格(保守/激进/均衡),牌风不同
 import { evaluateHand } from './poker.js';
 
-// ---- 牌力强度 0~1 ----
+// ---- 牌力强度 0~1(锚定真实牌型胜率:豹子≈99% > 同花顺≈96% > 金花≈72~85% > 顺子≈62~72% > 对子≈52~62% > 单张≈22~48%) ----
 export function handStrength(cards) {
   if (!Array.isArray(cards) || cards.length !== 3) return 0;
   const { category, tiebreak } = evaluateHand(cards);
@@ -18,14 +19,14 @@ export function handStrength(cards) {
     case 3: return 0.70 + (top / 14) * 0.24;  // 金花
     case 2: return 0.56 + (top / 14) * 0.14;  // 顺子
     case 1: return 0.30 + (top / 14) * 0.28;  // 对子
-    default: return 0.04 + (top / 14) * 0.34; // 单张
+    default: return 0.10 + (top / 14) * 0.34; // 单张(高牌更有价值)
   }
 }
 
 // ---- 面对 n 个对手的估算胜率(单挑基准 + 多人衰减) ----
 export function estEquity(strength, oppCount) {
   const n = Math.max(1, oppCount);
-  const eq1 = 0.08 + strength * 0.9; // 单挑胜率
+  const eq1 = 0.12 + strength * 0.86; // 单挑胜率
   return Math.pow(eq1, n * 0.9);
 }
 
@@ -61,7 +62,8 @@ export function nextLevel(currentBet, boost) {
 export function chooseBotAction(ctx, random = Math.random) {
   const {
     seen, hand, chips, currentBet, pot, actionsInHand,
-    oppCount, opponents, canCompare, compareTargetIds, personality
+    oppCount, opponents, canCompare, compareTargetIds, personality,
+    threat = false
   } = ctx;
   const pers = personality || botPersonality('旺财');
   const r = random();
@@ -97,22 +99,22 @@ export function chooseBotAction(ctx, random = Math.random) {
   const rich = pot > 0 && oppAgg > pot * 0.35;
   const busy = actionsInHand >= Math.max(2, (oppCount + 1) * 2); // 多轮下注,牌力普遍抬升
 
-  // 1) 超强牌(豹子/同花顺/大金花):价值最大化
+  // 1) 超强牌(豹子/同花顺/大金花):价值最大化,以钓鱼为主
   if (strength >= 0.85) {
-    // 可比牌:单挑直接清,多人局小概率比掉最凶对手,多数情况加注钓鱼
+    // 可比牌:单挑小概率清人;对手刚加注(威胁)=牌可能好 → 不急着比,让他继续投钱
     if (canCompare && compareTargetIds.length) {
-      const clear = oppCount <= 1 ? r < 0.6 : (strength >= 0.95 ? r < 0.35 : r < 0.15);
+      const clear = oppCount <= 1 ? (r < 0.4 && !threat) : (strength >= 0.95 ? r < 0.2 : r < 0.08);
       if (clear) return pickCompare();
     }
-    const boost = strength >= 0.95 ? 3 + Math.floor(r * 4) : 2 + Math.floor(r * 3);
+    const boost = strength >= 0.95 ? 3 + Math.floor(r * 5) : 2 + Math.floor(r * 4);
     const level = nextLevel(currentBet, boost);
     if (chips >= level) return { action: 'raise', raiseTo: level };
     return { action: 'call' };
   }
 
-  // 2) 强牌(金花/顺子):主动加注压榨
+  // 2) 强牌(金花/顺子):主动加注压榨;对手刚加注时不比牌,跟注或反加钓鱼
   if (eq > 0.58) {
-    if (canCompare && compareTargetIds.length && oppCount <= 2 && r < 0.25) return pickCompare();
+    if (canCompare && compareTargetIds.length && oppCount <= 2 && r < 0.25 && !threat) return pickCompare();
     if (r < 0.45) {
       const boost = strength >= 0.75 ? 2 + Math.floor(r * 3) : 1 + Math.floor(r * 2);
       const level = nextLevel(currentBet, boost);
@@ -121,18 +123,18 @@ export function chooseBotAction(ctx, random = Math.random) {
     return { action: 'call' };
   }
 
-  // 3) 中牌(对子/大单张):赔率够就跟,对手凶则收紧,多人局不主动比
+  // 3) 中牌(对子/大单张):赔率够就跟,对手凶/威胁则收紧,多人局不主动比
   if (eq > po * pers.tight * 1.15) {
-    if (canCompare && oppCount <= 1 && eq > 0.5 && r < 0.2) return pickCompare();
-    if (r < 0.12 && !rich && currentBet < 80) {
+    if (canCompare && oppCount <= 1 && eq > 0.5 && r < 0.2 && !threat) return pickCompare();
+    if (r < 0.12 && !rich && !threat && currentBet < 80) {
       const level = nextLevel(currentBet, 1 + Math.floor(r * 2));
       if (chips >= level) return { action: 'raise', raiseTo: level };
     }
     return { action: 'call' };
   }
 
-  // 4) 边缘牌:赔率勉强够 → 跟;对手凶/轮次多 → 弃
-  if (eq > po * pers.tight) return rich || busy ? { action: 'fold' } : { action: 'call' };
+  // 4) 边缘牌:赔率勉强够 → 跟;对手凶/轮次多/刚加注 → 弃
+  if (eq > po * pers.tight) return rich || busy || threat ? { action: 'fold' } : { action: 'call' };
 
   // 5) 弱牌:人少+便宜时小概率偷鸡,否则弃
   if (r < pers.bluff && oppCount <= 2 && currentBet < 60 && pot > 25) {
