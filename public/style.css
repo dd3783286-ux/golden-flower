@@ -636,15 +636,15 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .bet-info b{color:#ffe081;font-weight:800;font-size:13px;margin-left:1px}
 .bet-info span{display:block;white-space:nowrap}
 
-/* ===== 右侧当前注信息块(桌面右侧,与左侧底注对称) ===== */
+/* ===== 右侧当前注信息块:挪到桌面筹码池正下方居中,避开两侧玩家头像 ===== */
 .bet-current-info{
-  position:absolute;right:1.5%;top:50%;transform:translateY(-50%);
-  padding:7px 11px;
+  position:absolute;left:50%;top:64%;transform:translate(-50%,-50%);
+  padding:6px 12px;
   border:1px solid #f5cb5d40;border-radius:11px;
   background:#0c2a24e6;color:#cfe0da;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 2px 6px rgba(0,0,0,.3);
-  display:flex;flex-direction:column;align-items:flex-end;gap:2px;
-  text-align:right;white-space:nowrap;line-height:1.35
+  display:flex;flex-direction:column;align-items:center;gap:1px;
+  text-align:center;white-space:nowrap;line-height:1.3
 }
 .bet-current{display:flex;align-items:center;gap:5px;font-size:11px;color:#b9d2cb}
 .bet-current i{width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffe985,#dc9d26);border:2px solid #8a5a10;box-shadow:0 2px 5px #0006,inset 0 1px 1px #fff8;display:inline-block}
@@ -653,7 +653,7 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .bet-round{font-size:11px;color:#9bb8b0}
 .bet-round b{color:#ffe081;font-weight:800;font-size:12px;margin-left:1px}
 @media(max-width:430px){
-  .bet-current-info{padding:5px 8px;right:1%}
+  .bet-current-info{padding:4px 9px;top:60%}
   .bet-current b{font-size:23px}
   .bet-you b{font-size:12px}
   .bet-round{font-size:10px}
