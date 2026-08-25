@@ -40,7 +40,7 @@ const rooms = new Map();
 const roomTimers = new Map();
 const botTimers = new Map(); // roomCode -> setTimeout,服务端托管机器人行动调度
 // 机器人陪玩名字池:每次添加一个,名字不重复
-const BOT_NAMES = ['小美', '阿强', '旺财'];
+const BOT_NAMES = ['潘', '谢', '王'];
 const botIdSequence = { value: 0 };
 const botId = () => `bot_${Date.now().toString(36)}_${(botIdSequence.value += 1)}`;
 const nextBotName = (room) => {
