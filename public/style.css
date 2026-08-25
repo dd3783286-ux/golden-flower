@@ -635,12 +635,19 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .bet-info b{color:#ffe081;font-weight:800;font-size:13px;margin-left:1px}
 .bet-info span{display:block;white-space:nowrap}
 
-/* ===== 桌面下方信息条:左右两端对称,同款同尺寸框 ===== */
+/* ===== 桌面下方信息条:左框|手牌|右框 一行三列同排 ===== */
 .table-meta{
   display:flex;justify-content:space-between;align-items:center;gap:8px;
   margin:2px 0 0;padding:0;
   position:relative;z-index:6
 }
+/* 手牌区并入信息行:清除所有负margin(含旧!important),垂直居中 */
+.table-meta .my-zone{
+  margin-top:0!important;flex:1;min-width:0;text-align:center;
+  position:relative;z-index:6;pointer-events:none
+}
+.table-meta .my-zone .hand-state{font-size:13px;margin:3px auto 2px}
+.table-meta .my-zone .my-stats{margin-top:1px;font-size:12px}
 /* 左右两框:完全同款同尺寸 */
 .table-meta .bet-info-sym,
 .table-meta .bet-current-info{
@@ -664,12 +671,18 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .table-meta .bet-round{font-size:11px;color:#9bb8b0}
 .table-meta .bet-round b{color:#ffe081;font-weight:800;font-size:12px;margin-left:1px}
 @media(max-width:430px){
-  .table-meta .bet-info-sym,.table-meta .bet-current-info{min-width:84px;min-height:66px;padding:5px 8px}
+  .table-meta .bet-info-sym,.table-meta .bet-current-info{min-width:70px;min-height:66px;padding:5px 8px}
   .table-meta .bet-info-sym b{font-size:18px}
   .table-meta .bet-seen,.table-meta .bet-blind{font-size:10px}
   .table-meta .bet-seen b,.table-meta .bet-blind b{font-size:20px}
   .table-meta .bet-round{font-size:10px}
+  .table-meta .bet-round b{font-size:11px}
+  .table-meta .my-zone .hand-state{font-size:12px}
+  .table-meta .my-zone .my-stats{font-size:11px}
+  .table-stage{height:50vh;min-height:380px}
 }
+/* 桌面高度压缩:底部整体上移更紧凑 */
+.table-stage{height:min(54vh,500px);min-height:400px}
 
 /* ===== 大厅版面美化 ===== */
 /* 顶部三张牌:叠放扑克牌效果 */
