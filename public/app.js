@@ -538,9 +538,7 @@ function render() {
   const turnPlayer = room.players[room.turn];
   $('#code').textContent = room.code;
   $('#pot').textContent = room.pot;
-  $('#baseBet').textContent = room.baseBet;
   $('#currentBet').textContent = room.currentBet;
-  $('#round').textContent = room.round;
   // 右侧信息块:你付(按明/闷状态) + 下注轮次(行动数÷存活人数)
   const aliveCount = room.players.filter((player) => !player.folded).length;
   $('#youPayText').textContent = mine?.seen ? '你付' : '你闷付';
