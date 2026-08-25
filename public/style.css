@@ -635,13 +635,13 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .bet-info b{color:#ffe081;font-weight:800;font-size:13px;margin-left:1px}
 .bet-info span{display:block;white-space:nowrap}
 
-/* ===== 桌面下方信息条:左右两端对称,不占桌面不挡头像 ===== */
+/* ===== 桌面下方信息条:两块都靠右,底注/局数与当前注并排对称 ===== */
 .table-meta{
-  display:flex;justify-content:space-between;align-items:center;gap:8px;
+  display:flex;justify-content:flex-end;align-items:center;gap:8px;
   margin:2px 0 0;padding:0;
   position:relative;z-index:6
 }
-.table-meta .bet-info{display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin:0;padding:6px 10px;font-size:11px}
+.table-meta .bet-info{display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin:0;padding:6px 10px;font-size:11px}
 .table-meta .bet-info b{font-size:12px}
 .table-meta .bet-current-info{
   display:flex;flex-direction:column;align-items:flex-end;gap:1px;
