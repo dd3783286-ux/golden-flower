@@ -31,6 +31,7 @@ import {
   showdown,
   startGame
 } from './game.js';
+import { botPersonality, chooseBotAction } from './botBrain.js';
 
 const app = express();
 const server = createServer(app);
@@ -183,7 +184,7 @@ app.get('/api/me', (req, res) => res.json({
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 // 前端版本号:每次发布时更新(与 index.html 的 ?v= 同步),供"新版本提示"检测
-const APP_VERSION = '20260824r';
+const APP_VERSION = '20260824s';
 app.get('/api/version', (_req, res) => res.json({ version: APP_VERSION }));
 
 app.post('/api/dev-login', limitSensitiveRequests, (req, res) => {
@@ -554,35 +555,30 @@ function ensureBotChips(room, bot) {
   } catch { /* 忽略单房间异常 */ }
 }
 
-// 机器人决策(移植自外部陪玩脚本 gf-bot.mjs,偏稳健但不像以前那么怂)
+// 机器人决策:智能引擎(牌力+赔率+读人+诈唬+性格),见 src/botBrain.js
 function decideBot(room, bot) {
   const { canCompare, compareTargetIds } = comparisonAvailability(room, bot.id);
   const active = room.players.filter((player) => !player.folded);
-  const tooRich = betCost(room.currentBet, bot.seen);
-  const richRand = Math.random();
-  // 筹码极少才弃(阈值放宽,不再轻易放弃)
-  if (bot.chips < 10 && richRand < 0.35) return act(room, bot.id, 'fold');
-  // 档位越高越倾向弃牌(概率大幅下调:闷100也不会动不动就弃)
-  if (tooRich >= 500 && richRand < 0.75) return act(room, bot.id, 'fold');
-  if (tooRich >= 200 && richRand < 0.5) return act(room, bot.id, 'fold');
-  if (tooRich >= 100 && richRand < 0.3) return act(room, bot.id, 'fold');
-  if (tooRich >= 60 && richRand < 0.16) return act(room, bot.id, 'fold');
-  if (tooRich >= 30 && richRand < 0.08) return act(room, bot.id, 'fold');
-  const rand = Math.random();
-  if (!bot.seen && rand < 0.5) {
-    // 看牌:看牌后仍是自己回合,广播后会被再次调度补跟注
-    return act(room, bot.id, 'see');
-  }
-  if (bot.seen && rand > 0.82 && canCompare && compareTargetIds.length) {
-    const targetId = compareTargetIds[Math.floor(Math.random() * compareTargetIds.length)];
-    return showdown(room, bot.id, targetId);
-  }
-  if (rand > 0.92 && room.actionsInHand >= active.length * 4) return act(room, bot.id, 'fold');
-  if (rand > 0.72 && room.currentBet < 100) {
-    const nextLevel = room.currentBet + 1 + Math.floor(Math.random() * 6); // 加1~6注
-    if (bot.chips >= betCost(nextLevel, bot.seen)) return act(room, bot.id, 'raise', nextLevel);
-  }
-  return act(room, bot.id, 'call');
+  const opponents = active.filter((player) => player.id !== bot.id)
+    .sort((a, b) => b.bet - a.bet); // 投入多的排前面,视为更凶
+  const ctx = {
+    seen: bot.seen,
+    hand: bot.seen ? bot.hand : [],
+    chips: bot.chips,
+    currentBet: room.currentBet,
+    pot: room.pot,
+    actionsInHand: room.actionsInHand,
+    oppCount: opponents.length,
+    opponents: opponents.map((o) => ({ bet: o.bet, seen: o.seen })),
+    canCompare,
+    compareTargetIds: opponents.filter((o) => compareTargetIds.includes(o.id)).map((o) => o.id),
+    personality: botPersonality(bot.name)
+  };
+  const decision = chooseBotAction(ctx);
+  console.log(`[bot] ${bot.name}(${ctx.personality.tag}) ${bot.seen ? '明' : '闷'} 档位${room.currentBet} → ${decision.action}${decision.raiseTo ? `至${decision.raiseTo}` : ''}${decision.targetId ? `(${room.players.find((p) => p.id === decision.targetId)?.name})` : ''}`);
+  if (decision.action === 'compare') return showdown(room, bot.id, decision.targetId);
+  if (decision.action === 'raise') return act(room, bot.id, 'raise', decision.raiseTo);
+  return act(room, bot.id, decision.action); // call / fold / see
 }
 
 function scheduleRoom(room) {

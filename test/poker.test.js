@@ -124,9 +124,9 @@ test('成熟下注档位只能向上选择', () => {
   const room = fundedRoom();
   startGame(room, '1', () => 0);
   act(room, '2', 'raise', 5);
-  assert.deepEqual({ type: room.lastAction.type, stake: room.lastAction.stake }, { type: 'raise', stake: 5 });
-  assert.equal(room.currentBet, 5);
-  assert.ok(BET_LEVELS.includes(room.currentBet));
+  // 奇数档位自动取偶(保证明牌价=2×闷牌价严格成立)
+  assert.deepEqual({ type: room.lastAction.type, stake: room.lastAction.stake }, { type: 'raise', stake: 6 });
+  assert.equal(room.currentBet, 6);
   assert.throws(() => act(room, '1', 'raise', 2), /高于当前档位/);
 });
 

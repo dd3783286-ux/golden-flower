@@ -86,7 +86,8 @@ test('双客户端完成建房、准备、审批、重连、下注和真正退�
   await waitUntil(() => ownerRoom.players[ownerRoom.turn].name !== firstName);
   const secondName = ownerRoom.players[ownerRoom.turn].name;
   assert.equal((await emitAck(socketsByName[secondName], 'action', { code: created.code, action: 'raise', raiseTo: 5 })).ok, true);
-  await waitUntil(() => ownerRoom.currentBet === 5);
+  // 奇数档位自动取偶(明牌价=2×闷牌价严格成立)
+  await waitUntil(() => ownerRoom.currentBet === 6);
 
   assert.equal((await emitAck(firstSocket, 'leave-room', { code: created.code })).ok, true);
   await waitUntil(() => ownerRoom?.status === 'waiting' || guestRoom?.status === 'waiting');
