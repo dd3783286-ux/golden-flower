@@ -515,7 +515,7 @@ function scheduleBotDecisions(room) {
   const timer = setTimeout(() => {
     botTimers.delete(room.code);
     runBotTurn(room.code, current.id);
-  }, 1_200 + Math.random() * 1_800);
+  }, 700 + Math.random() * 1_100); // 0.7~1.8秒思考,节奏接近真人
   timer.unref?.();
   botTimers.set(room.code, timer);
 }
