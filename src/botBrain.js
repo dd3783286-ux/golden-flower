@@ -87,6 +87,8 @@ export function chooseBotAction(ctx, random = Math.random) {
       const level = nextLevel(currentBet, 2);
       if (chips >= Math.ceil(level / 2)) return { action: 'raise', raiseTo: level };
     }
+    // 单挑连续平跟多轮:半价闷开赌一把(真人会这么干,成本低)
+    if (canCompare && oppCount <= 1 && r < 0.15 && actionsInHand >= 4) return pickCompare();
     return { action: 'call' };
   }
 
@@ -98,12 +100,15 @@ export function chooseBotAction(ctx, random = Math.random) {
   const oppAgg = opponents.reduce((sum, o) => sum + (o.bet || 0), 0) / Math.max(1, oppCount || 1);
   const rich = pot > 0 && oppAgg > pot * 0.35;
   const busy = actionsInHand >= Math.max(2, (oppCount + 1) * 2); // 多轮下注,牌力普遍抬升
+  // 连续平跟多轮无人加注 → 大家都跟烦了,该开牌终结(真人心理)
+  const stall = actionsInHand >= Math.max(4, (oppCount + 1) * 3);
 
-  // 1) 超强牌(豹子/同花顺/大金花):价值最大化,以钓鱼为主
+  // 1) 超强牌(豹子/同花顺/大金花):价值最大化,以钓鱼为主,但平跟久了也该开牌清人
   if (strength >= 0.85) {
-    // 可比牌:单挑小概率清人;对手刚加注(威胁)=牌可能好 → 不急着比,让他继续投钱
     if (canCompare && compareTargetIds.length) {
-      const clear = oppCount <= 1 ? (r < 0.4 && !threat) : (strength >= 0.95 ? r < 0.2 : r < 0.08);
+      const clear = oppCount <= 1
+        ? (r < (stall ? 0.6 : 0.4) && !threat)
+        : (strength >= 0.95 ? r < (stall ? 0.4 : 0.2) : r < (stall ? 0.25 : 0.08));
       if (clear) return pickCompare();
     }
     const boost = strength >= 0.95 ? 3 + Math.floor(r * 5) : 2 + Math.floor(r * 4);
@@ -112,9 +117,9 @@ export function chooseBotAction(ctx, random = Math.random) {
     return { action: 'call' };
   }
 
-  // 2) 强牌(金花/顺子):主动加注压榨;对手刚加注时不比牌,跟注或反加钓鱼
+  // 2) 强牌(金花/顺子):主动加注压榨;平跟久了直接开牌清人;对手刚加注时不比(钓鱼)
   if (eq > 0.58) {
-    if (canCompare && compareTargetIds.length && oppCount <= 2 && r < 0.25 && !threat) return pickCompare();
+    if (canCompare && compareTargetIds.length && oppCount <= 2 && r < (stall ? 0.7 : 0.45) && !threat) return pickCompare();
     if (r < 0.45) {
       const boost = strength >= 0.75 ? 2 + Math.floor(r * 3) : 1 + Math.floor(r * 2);
       const level = nextLevel(currentBet, boost);
@@ -123,9 +128,12 @@ export function chooseBotAction(ctx, random = Math.random) {
     return { action: 'call' };
   }
 
-  // 3) 中牌(对子/大单张):赔率够就跟,对手凶/威胁则收紧,多人局不主动比
+  // 3) 中牌(对子/大单张):赔率够就跟;平跟久了会主动开牌赌对方更弱(真人常干);对手凶/威胁则收紧
   if (eq > po * pers.tight * 1.15) {
-    if (canCompare && oppCount <= 1 && eq > 0.5 && r < 0.2 && !threat) return pickCompare();
+    if (canCompare && !threat) {
+      if (oppCount <= 1 && eq > 0.5 && r < (stall ? 0.5 : 0.3)) return pickCompare();
+      if (oppCount >= 2 && r < (stall ? 0.35 : 0.15)) return pickCompare();
+    }
     if (r < 0.12 && !rich && !threat && currentBet < 80) {
       const level = nextLevel(currentBet, 1 + Math.floor(r * 2));
       if (chips >= level) return { action: 'raise', raiseTo: level };
@@ -133,8 +141,11 @@ export function chooseBotAction(ctx, random = Math.random) {
     return { action: 'call' };
   }
 
-  // 4) 边缘牌:赔率勉强够 → 跟;对手凶/轮次多/刚加注 → 弃
-  if (eq > po * pers.tight) return rich || busy || threat ? { action: 'fold' } : { action: 'call' };
+  // 4) 边缘牌:赔率勉强够 → 跟;对手凶/轮次多/刚加注 → 弃;单挑平跟久了小概率赌开
+  if (eq > po * pers.tight) {
+    if (canCompare && oppCount <= 1 && !threat && r < (stall ? 0.16 : 0.06)) return pickCompare();
+    return rich || busy || threat ? { action: 'fold' } : { action: 'call' };
+  }
 
   // 5) 弱牌:人少+便宜时小概率偷鸡,否则弃
   if (r < pers.bluff && oppCount <= 2 && currentBet < 60 && pot > 25) {

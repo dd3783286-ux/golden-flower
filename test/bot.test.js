@@ -188,3 +188,29 @@ test('读人:无威胁时同等边缘牌,赔率够则跟注', () => {
   }), always(0.5));
   assert.equal(d.action, 'call');
 });
+
+test('多人平跟多轮(stall):中牌对子主动开牌终结,不再无限跟注', () => {
+  const d = chooseBotAction(base({
+    hand: offSuit([9, 9, 2]), oppCount: 3, actionsInHand: 15,
+    opponents: [{ bet: 6, seen: true }, { bet: 6, seen: true }, { bet: 6, seen: true }],
+    compareTargetIds: ['p2', 'p3', 'p4']
+  }), always(0.1));
+  assert.equal(d.action, 'compare');
+});
+
+test('多人平跟多轮(stall):金花主动比牌清人', () => {
+  const d = chooseBotAction(base({
+    hand: suited([2, 4, 6]), oppCount: 2, actionsInHand: 12,
+    opponents: [{ bet: 5, seen: true }, { bet: 5, seen: true }],
+    compareTargetIds: ['p2', 'p3']
+  }), always(0.3));
+  assert.equal(d.action, 'compare');
+});
+
+test('单挑平跟多轮:闷牌半价闷开赌一把', () => {
+  const d = chooseBotAction(base({
+    seen: false, hand: [], actionsInHand: 6, pot: 30,
+    opponents: [{ bet: 4, seen: true }]
+  }), always(0.1));
+  assert.equal(d.action, 'compare');
+});
