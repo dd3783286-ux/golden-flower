@@ -539,12 +539,11 @@ function render() {
   $('#code').textContent = room.code;
   $('#pot').textContent = room.pot;
   $('#baseBet').textContent = room.baseBet;
-  $('#currentBet').textContent = room.currentBet;
   $('#round').textContent = room.round;
-  // 右侧信息块:你付(按明/闷状态) + 下注轮次(行动数÷存活人数)
+  // 右侧信息块:明牌价/闷牌价(档位对应) + 下注轮次(行动数÷存活人数)
+  $('#seenPay').textContent = room.currentBet;
+  $('#blindPay').textContent = Math.ceil(room.currentBet / 2);
   const aliveCount = room.players.filter((player) => !player.folded).length;
-  $('#youPayText').textContent = mine?.seen ? '你付' : '你闷付';
-  $('#youPay').textContent = mine ? betCost(room.currentBet, mine.seen) : 0;
   $('#betRound').textContent = room.status === 'playing' ? Math.floor(room.actionsInHand / Math.max(1, aliveCount)) + 1 : 0;
   $('#roomStatus').textContent = room.status === 'playing' ? `${turnPlayer?.name || '玩家'} 操作中` : `${room.players.length}/10人 · 等待开局`;
   const owner = room.players.find((player) => player.id === room.ownerId);

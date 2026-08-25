@@ -635,43 +635,40 @@ body{width:100%;min-height:100vh;min-height:100dvh;overflow-x:hidden;overscroll-
 .bet-info b{color:#ffe081;font-weight:800;font-size:13px;margin-left:1px}
 .bet-info span{display:block;white-space:nowrap}
 
-/* ===== 桌面下方信息条:左右两端对称,同款框 ===== */
+/* ===== 桌面下方信息条:左右两端对称,同款同尺寸框 ===== */
 .table-meta{
   display:flex;justify-content:space-between;align-items:center;gap:8px;
   margin:2px 0 0;padding:0;
   position:relative;z-index:6
 }
-/* 左块:与右侧当前注同款外框,内容左对齐 */
-.table-meta .bet-info-sym{
-  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+/* 左右两框:完全同款同尺寸 */
+.table-meta .bet-info-sym,
+.table-meta .bet-current-info{
+  display:flex;flex-direction:column;gap:2px;
   margin:0;padding:6px 10px;
+  min-width:96px;min-height:76px;
+  justify-content:center;
   border:1px solid #f5cb5d40;border-radius:11px;
   background:#0c2a24e6;color:#cfe0da;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 2px 6px rgba(0,0,0,.3);
-  font-size:11px;line-height:1.35
+  font-size:11px;line-height:1.3
 }
-.table-meta .bet-info-sym b{color:#ffe081;font-weight:800;font-size:13px;margin-left:1px}
-.table-meta .bet-info-sym span{display:block;white-space:nowrap}
-.table-meta .bet-current-info{
-  display:flex;flex-direction:column;align-items:flex-end;gap:1px;
-  margin:0;padding:6px 10px;text-align:right;line-height:1.3;
-  border:1px solid #f5cb5d40;border-radius:11px;
-  background:#0c2a24e6;color:#cfe0da;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 2px 6px rgba(0,0,0,.3)
-}
-.table-meta .bet-current{display:flex;align-items:center;gap:5px;font-size:11px;color:#b9d2cb}
-.table-meta .bet-current i{width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffe985,#dc9d26);border:2px solid #8a5a10;box-shadow:0 2px 5px #0006,inset 0 1px 1px #fff8;display:inline-block}
-.table-meta .bet-current b{font-size:27px;color:#ffe189;font-weight:900;text-shadow:0 2px 6px #000;line-height:1}
-.table-meta .bet-you b{color:#ffe081;font-weight:800;font-size:14px;margin-left:1px}
+/* 左块内容左对齐,数字醒目 */
+.table-meta .bet-info-sym{align-items:flex-start;text-align:left}
+.table-meta .bet-info-sym span{display:flex;align-items:baseline;gap:3px;white-space:nowrap}
+.table-meta .bet-info-sym b{color:#ffe189;font-weight:900;font-size:20px;text-shadow:0 2px 6px #000;line-height:1}
+/* 右块内容右对齐,明牌/闷牌价格大数字 */
+.table-meta .bet-current-info{align-items:flex-end;text-align:right}
+.table-meta .bet-seen,.table-meta .bet-blind{display:flex;align-items:baseline;gap:3px;font-size:11px;color:#b9d2cb}
+.table-meta .bet-seen b,.table-meta .bet-blind b{color:#ffe189;font-weight:900;font-size:22px;text-shadow:0 2px 6px #000;line-height:1}
 .table-meta .bet-round{font-size:11px;color:#9bb8b0}
 .table-meta .bet-round b{color:#ffe081;font-weight:800;font-size:12px;margin-left:1px}
 @media(max-width:430px){
-  .table-meta .bet-current-info{padding:4px 8px}
-  .table-meta .bet-current b{font-size:23px}
-  .table-meta .bet-you b{font-size:12px}
+  .table-meta .bet-info-sym,.table-meta .bet-current-info{min-width:84px;min-height:66px;padding:5px 8px}
+  .table-meta .bet-info-sym b{font-size:18px}
+  .table-meta .bet-seen,.table-meta .bet-blind{font-size:10px}
+  .table-meta .bet-seen b,.table-meta .bet-blind b{font-size:20px}
   .table-meta .bet-round{font-size:10px}
-  .table-meta .bet-current span{font-size:10px}
-  .table-meta .bet-info{padding:4px 8px;font-size:10px}
 }
 
 /* ===== 大厅版面美化 ===== */
