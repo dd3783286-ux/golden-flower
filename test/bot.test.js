@@ -127,12 +127,12 @@ test('弱牌被高额档位压:即使激进性格也不偷鸡(风险失控)', ()
 });
 
 test('闷牌:赔率正常时跟注为主(半价优势)', () => {
-  const d = chooseBotAction(base({ seen: false, hand: [] }), always(0.5));
+  const d = chooseBotAction(base({ seen: false, hand: [] }), always(0.55));
   assert.equal(d.action, 'call');
 });
 
 test('闷牌:底池够大且便宜时看牌获取信息', () => {
-  const d = chooseBotAction(base({ seen: false, hand: [], pot: 80, currentBet: 10 }), always(0.1));
+  const d = chooseBotAction(base({ seen: false, hand: [], pot: 80, currentBet: 10 }), always(0.2));
   assert.equal(d.action, 'see');
 });
 
@@ -213,4 +213,36 @@ test('单挑平跟多轮:闷牌半价闷开赌一把', () => {
     opponents: [{ bet: 4, seen: true }]
   }), always(0.1));
   assert.equal(d.action, 'compare');
+});
+
+test('闷牌第4轮起:70%概率看牌,不再无限闷(真实打法:单局闷≤4轮)', () => {
+  const d = chooseBotAction(base({
+    seen: false, hand: [], actionsInHand: 12, oppCount: 2, pot: 30,
+    opponents: [{ bet: 2, seen: false }, { bet: 2, seen: false }]
+  }), always(0.5));
+  assert.equal(d.action, 'see'); // 0.5<0.7
+});
+
+test('闷牌第4轮起:20%概率止损弃牌', () => {
+  const d = chooseBotAction(base({
+    seen: false, hand: [], actionsInHand: 12, oppCount: 2, pot: 30,
+    opponents: [{ bet: 2, seen: false }, { bet: 2, seen: false }]
+  }), always(0.8));
+  assert.equal(d.action, 'fold'); // 0.7<=0.8<0.9
+});
+
+test('闷牌第4轮起:仅10%继续闷跟(心理战),不会无限闷', () => {
+  const d = chooseBotAction(base({
+    seen: false, hand: [], actionsInHand: 12, oppCount: 2, pot: 30,
+    opponents: [{ bet: 2, seen: false }, { bet: 2, seen: false }]
+  }), always(0.95));
+  assert.equal(d.action, 'call');
+});
+
+test('闷牌第2~3轮:底池值得时看牌获取信息', () => {
+  const d = chooseBotAction(base({
+    seen: false, hand: [], actionsInHand: 4, oppCount: 1, pot: 40,
+    opponents: [{ bet: 4, seen: true }]
+  }), always(0.2));
+  assert.equal(d.action, 'see'); // 0.2>0.12不闷开, blindRound=3, seeP=0.45, 0.2<0.45
 });

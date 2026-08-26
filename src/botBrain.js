@@ -73,22 +73,33 @@ export function chooseBotAction(ctx, random = Math.random) {
   // 筹码不足以跟注:绝大多数弃(极小概率比牌拼一把)
   if (chips < cost) return r < 0.08 && canCompare && compareTargetIds.length ? pickCompare() : { action: 'fold' };
 
-  // ============ 闷牌:不知道牌力,靠半价优势与赔率 ============
+  // ============ 闷牌:半价跟注 + 轮数控制(真人不会无限闷,搜证:开局闷2~3轮、单局闷≤4轮) ============
   if (!seen) {
     const po = potOdds(cost, pot);
-    // 赔率差(成本占底池比例过高)且档位高:弃或看牌止损
-    if (po > 0.5 && currentBet >= 60) return r < 0.55 ? { action: 'fold' } : { action: 'see' };
-    // 成本吃掉筹码一大块(>40%)且赔率一般:弃
+    const blindRound = Math.floor(actionsInHand / Math.max(1, oppCount + 1)) + 1; // 当前第几轮
+    // 1) 赔率差(成本占底池比例过高)且档位高:弃或看牌止损
+    if (po > 0.5 && currentBet >= 60) return r < 0.5 ? { action: 'fold' } : { action: 'see' };
+    // 2) 成本吃掉筹码一大块(>40%)且赔率一般:弃
     if (cost / chips > 0.4 && po > 0.3 && r < 0.45) return { action: 'fold' };
-    // 底池够大、档位适中:看牌拿信息(闷牌半价看牌很划算)
-    if (pot >= 40 && currentBet <= 30 && r < 0.3) return { action: 'see' };
-    // 半价偷鸡:性格激进的多闷加注施压(成本只有一半,风险低)
+    // 3) 单挑连续平跟:小概率半价闷开赌一把(成本低,真人会这么干;概率低,不挡看牌决策)
+    if (canCompare && oppCount <= 1 && r < 0.12 && actionsInHand >= 3) return pickCompare();
+    // 4) 闷牌轮数控制:闷得越久越必须决策(看牌/弃/闷加注),绝不无限闷
+    if (blindRound >= 4) {
+      // 第4轮起:70%看牌(获取信息),20%弃(止损),10%继续闷(心理战/天然诈唬)
+      if (r < 0.7) return { action: 'see' };
+      if (r < 0.9) return { action: 'fold' };
+    } else if (blindRound >= 2) {
+      // 第2~3轮:底池值得就多看牌,小概率止损弃牌
+      const seeP = pot >= 20 ? 0.45 : 0.25;
+      if (r < seeP) return { action: 'see' };
+      if (r < seeP + 0.06) return { action: 'fold' };
+    }
+    // 5) 半价偷鸡:性格激进的多闷加注施压(闷了几轮突然加注=天然诈唬,逼退胆小对手)
     if (r < pers.bluff && currentBet < 80) {
       const level = nextLevel(currentBet, 2);
       if (chips >= Math.ceil(level / 2)) return { action: 'raise', raiseTo: level };
     }
-    // 单挑连续平跟:半价闷开赌一把(真人会这么干,成本低)
-    if (canCompare && oppCount <= 1 && r < 0.25 && actionsInHand >= 3) return pickCompare();
+    // 6) 首轮/默认:半价跟注
     return { action: 'call' };
   }
 
