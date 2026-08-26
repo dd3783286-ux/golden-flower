@@ -1,7 +1,7 @@
 // test/bot.test.js — 机器人智能决策引擎测试
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseBotAction, estEquity, handStrength, nextLevel, potOdds } from '../src/botBrain.js';
+import { botPersonality, chooseBotAction, estEquity, handStrength, nextLevel, potOdds } from '../src/botBrain.js';
 
 // 异花色普通牌(避免误判同花/同花顺), 同花用 suited()
 const offSuit = (ranks) => ranks.map((r, i) => ({ suit: ['♠', '♥', '♦'][i % 3], rank: r }));
@@ -10,9 +10,9 @@ const always = (v) => () => v;
 
 // 显式性格(不依赖名字哈希,测试稳定)
 const P = {
-  保守: { tag: '保守', bluff: 0.05, tight: 1.3 },
-  均衡: { tag: '均衡', bluff: 0.10, tight: 1.0 },
-  激进: { tag: '激进', bluff: 0.17, tight: 0.75 }
+  保守: { tag: '保守', bluff: 0.05, tight: 1.3, blindSeeRound: 1, blindKeep: 0.08 },
+  均衡: { tag: '均衡', bluff: 0.10, tight: 1.0, blindSeeRound: 3, blindKeep: 0.12 },
+  激进: { tag: '激进', bluff: 0.17, tight: 0.75, blindSeeRound: 4, blindKeep: 0.2 }
 };
 
 function base(overrides = {}) {
@@ -132,7 +132,7 @@ test('闷牌:赔率正常时跟注为主(半价优势)', () => {
 });
 
 test('闷牌:底池够大且便宜时看牌获取信息', () => {
-  const d = chooseBotAction(base({ seen: false, hand: [], pot: 80, currentBet: 10 }), always(0.2));
+  const d = chooseBotAction(base({ seen: false, hand: [], pot: 80, currentBet: 10, actionsInHand: 8 }), always(0.2));
   assert.equal(d.action, 'see');
 });
 
@@ -244,5 +244,51 @@ test('闷牌第2~3轮:底池值得时看牌获取信息', () => {
     seen: false, hand: [], actionsInHand: 4, oppCount: 1, pot: 40,
     opponents: [{ bet: 4, seen: true }]
   }), always(0.2));
-  assert.equal(d.action, 'see'); // 0.2>0.12不闷开, blindRound=3, seeP=0.45, 0.2<0.45
+  assert.equal(d.action, 'see'); // 0.2>0.12不闷开, blindRound=3, seeP=0.75, 0.2<0.75
+});
+
+// ---------- 三机器人固定人设(用户指定) ----------
+test('人设映射:潘=激进闷牌流(闷≥3轮),王=保守看牌流(首轮看),谢=平衡偷鸡流(第2轮看)', () => {
+  const pan = botPersonality('潘');
+  const wang = botPersonality('王');
+  const xie = botPersonality('谢');
+  assert.equal(pan.blindSeeRound, 5);
+  assert.equal(pan.tag, '激进闷牌');
+  assert.equal(wang.blindSeeRound, 1);
+  assert.equal(wang.tag, '保守看牌');
+  assert.equal(xie.blindSeeRound, 2);
+  assert.equal(xie.tag, '平衡偷鸡');
+  // 偷鸡频率:谢(常偷)>潘(偶偷)>王(偶偷最少)
+  assert.ok(xie.bluff > pan.bluff && pan.bluff > wang.bluff);
+  // 跟注门槛:王最高(有牌才上)
+  assert.ok(wang.tight > xie.tight && xie.tight > pan.tight);
+});
+
+test('潘:闷牌前3轮不决策,继续闷着吊明牌', () => {
+  const d = chooseBotAction(base({
+    seen: false, hand: [], actionsInHand: 4, oppCount: 1, pot: 40,
+    opponents: [{ bet: 4, seen: true }], personality: botPersonality('潘')
+  }), always(0.9));
+  assert.equal(d.action, 'call'); // blindRound=3 < 5, 闷着不出手
+});
+
+test('王:首轮就看牌(保守打法)', () => {
+  const d = chooseBotAction(base({
+    seen: false, hand: [], actionsInHand: 1, oppCount: 1, pot: 10,
+    opponents: [{ bet: 2, seen: true }], personality: botPersonality('王')
+  }), always(0.5));
+  assert.equal(d.action, 'see'); // blindRound=1 >= 1 → 75%看牌
+});
+
+test('谢:第一轮跟着闷,第二轮看牌', () => {
+  const d1 = chooseBotAction(base({
+    seen: false, hand: [], actionsInHand: 1, oppCount: 1, pot: 10,
+    opponents: [{ bet: 2, seen: true }], personality: botPersonality('谢')
+  }), always(0.5));
+  assert.equal(d1.action, 'call'); // 第一轮闷跟
+  const d2 = chooseBotAction(base({
+    seen: false, hand: [], actionsInHand: 3, oppCount: 1, pot: 20,
+    opponents: [{ bet: 3, seen: true }], personality: botPersonality('谢')
+  }), always(0.5));
+  assert.equal(d2.action, 'see'); // 第二轮看牌
 });

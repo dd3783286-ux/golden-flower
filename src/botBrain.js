@@ -36,14 +36,24 @@ export function potOdds(cost, pot) {
   return total > 0 ? cost / total : 1;
 }
 
-// ---- 性格:由名字哈希派生,让每个机器人牌风不同 ----
+// ---- 性格:三个机器人固定人设(用户指定),其他名字走默认均衡 ----
+// blindSeeRound:闷牌到第几轮才强制决策看牌(潘5=闷3轮+、王1=首轮看牌、谢2=第二轮看牌)
+// blindKeep:过了决策轮仍继续闷的概率(心理战/陪闷)
+// bluff:偷鸡频率; tight:跟注门槛倍率(高=更挑牌)
 export function botPersonality(name) {
-  const seed = [...String(name || '')].reduce((acc, ch) => acc + ch.codePointAt(0), 0) % 3;
-  return seed === 0
-    ? { tag: '保守', bluff: 0.05, tight: 1.3 }   // 小美:稳健,少偷鸡,跟注门槛高
-    : seed === 1
-      ? { tag: '激进', bluff: 0.17, tight: 0.75 } // 阿强:凶,爱偷鸡,跟注门槛低
-      : { tag: '均衡', bluff: 0.10, tight: 1.0 };  // 旺财:标准
+  switch (String(name || '')) {
+    case '潘':
+      // 激进型·爱闷牌:闷牌至少三轮吊明牌(半价养池),偶尔偷鸡
+      return { tag: '激进闷牌', bluff: 0.14, tight: 0.8, blindSeeRound: 5, blindKeep: 0.30 };
+    case '王':
+      // 保守型:首轮就看牌,有牌就上没牌就弃,偶尔偷鸡
+      return { tag: '保守看牌', bluff: 0.06, tight: 1.4, blindSeeRound: 1, blindKeep: 0.08 };
+    case '谢':
+      // 平衡型:第一轮跟着闷,第二轮看牌,经常偷鸡,偶尔陪闷
+      return { tag: '平衡偷鸡', bluff: 0.18, tight: 0.95, blindSeeRound: 2, blindKeep: 0.16 };
+    default:
+      return { tag: '均衡', bluff: 0.10, tight: 1.0, blindSeeRound: 3, blindKeep: 0.12 };
+  }
 }
 
 // ---- 加注档位:高于当前档位且取偶(game.js 强制偶数,保证明=2×闷) ----
@@ -83,23 +93,22 @@ export function chooseBotAction(ctx, random = Math.random) {
     if (cost / chips > 0.4 && po > 0.3 && r < 0.45) return { action: 'fold' };
     // 3) 单挑连续平跟:小概率半价闷开赌一把(成本低,真人会这么干;概率低,不挡看牌决策)
     if (canCompare && oppCount <= 1 && r < 0.12 && actionsInHand >= 3) return pickCompare();
-    // 4) 闷牌轮数控制:闷得越久越必须决策(看牌/弃/闷加注),绝不无限闷
-    if (blindRound >= 4) {
-      // 第4轮起:70%看牌(获取信息),20%弃(止损),10%继续闷(心理战/天然诈唬)
-      if (r < 0.7) return { action: 'see' };
-      if (r < 0.9) return { action: 'fold' };
-    } else if (blindRound >= 2) {
-      // 第2~3轮:底池值得就多看牌,小概率止损弃牌
-      const seeP = pot >= 20 ? 0.45 : 0.25;
+    // 4) 闷牌轮数控制(按性格):到 blindSeeRound 才强制决策——潘5=闷3轮+吊明牌,王1=首轮看,谢2=第二轮看
+    const blindSee = pers.blindSeeRound || 3;
+    if (blindRound >= blindSee) {
+      const seeP = blindSee >= 4 ? 0.55 : 0.75; // 晚看牌的性格看牌概率略低(更爱继续闷)
       if (r < seeP) return { action: 'see' };
-      if (r < seeP + 0.06) return { action: 'fold' };
+      if (r < seeP + 0.15) return { action: 'fold' };
+      // 剩余概率按 blindKeep 继续闷(心理战/陪闷),兜底看牌绝不无限闷
+      if (r < seeP + 0.15 + (pers.blindKeep ?? 0.12)) return { action: 'call' };
+      return { action: 'see' };
     }
-    // 5) 半价偷鸡:性格激进的多闷加注施压(闷了几轮突然加注=天然诈唬,逼退胆小对手)
+    // 5) 未到决策轮:半价闷跟/闷加注(吊明牌核心:便宜跟注撑底池,逼明牌玩家付全额)
     if (r < pers.bluff && currentBet < 80) {
       const level = nextLevel(currentBet, 2);
       if (chips >= Math.ceil(level / 2)) return { action: 'raise', raiseTo: level };
     }
-    // 6) 首轮/默认:半价跟注
+    // 6) 默认:半价跟注
     return { action: 'call' };
   }
 
